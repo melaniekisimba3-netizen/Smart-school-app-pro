@@ -1,0 +1,11 @@
+{
+  "name": "SmartSchool RDC (FREDTECH)",
+  "description": "Plateforme SaaS de gestion scolaire moderne pour les écoles de la République Démocratique du Congo.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

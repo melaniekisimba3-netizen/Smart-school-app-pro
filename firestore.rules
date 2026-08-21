@@ -1,0 +1,452 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ---------------------------------------------------------------------------
+    // GLOBAL SECURITY HELPERS & ZERO TRUST CHECKS
+    // ---------------------------------------------------------------------------
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function hasRole(role) {
+      return isAuthenticated() && (
+        request.auth.token.role == role ||
+        (request.auth.token.roles != null && role in request.auth.token.roles)
+      );
+    }
+
+    function isPlatformOwner() {
+      return isAuthenticated() && (
+        request.auth.token.isOwner == true ||
+        request.auth.token.isSuperAdmin == true ||
+        request.auth.token.email == 'freddykalonda37@gmail.com' ||
+        hasRole('PROPRIETAIRE') || hasRole('Propriétaire') ||
+        hasRole('PROPRIÉTAIRE DE LA PLATEFORME') || hasRole('Propriétaire de la plateforme') ||
+        hasRole('SUPER_ADMIN') || hasRole('Super Admin') ||
+        hasRole('ADMINISTRATEUR_TECHNIQUE') || hasRole('Administrateur technique')
+      );
+    }
+
+    function getUserSchoolId() {
+      return request.auth.token.schoolId != null ? request.auth.token.schoolId : request.auth.token.tenantId;
+    }
+
+    function isSchoolMember(schoolId) {
+      return isAuthenticated() && (
+        isPlatformOwner() ||
+        getUserSchoolId() == schoolId
+      );
+    }
+
+    // ---------------------------------------------------------------------------
+    // 1. SCHOOLS & INSTITUTIONS
+    // ---------------------------------------------------------------------------
+    match /schools/{schoolId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        isSchoolMember(schoolId) ||
+        hasRole('INSPECTEUR_PROVINCIAL') || hasRole('Inspecteur Provincial') ||
+        hasRole('INSPECTEUR_GENERAL') || hasRole('Inspecteur Général') ||
+        hasRole('ADMINISTRATEUR_NATIONAL_EPST') || hasRole('Administrateur National EPST')
+      );
+      allow create, update: if isPlatformOwner() || (
+        isSchoolMember(schoolId) && (
+          hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+          hasRole('DIRECTEUR') || hasRole('Directeur')
+        )
+      );
+      allow delete: if isPlatformOwner();
+    }
+
+    // ---------------------------------------------------------------------------
+    // 2. USERS & PROFILES (NO SELF-ASSIGNMENT OF ROLES OR TENANT)
+    // ---------------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isOwner', 'isSuperAdmin', 'schoolId', 'tenantId'])
+        ) ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('DIRECTEUR') || hasRole('Directeur') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner();
+    }
+
+    // ---------------------------------------------------------------------------
+    // 3. PUPILS / STUDENTS (ISOLATED TO SCHOOL TENANT & PARENT/STUDENT OWNERSHIP)
+    // ---------------------------------------------------------------------------
+    match /pupils/{pupilId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId)) ||
+        (
+          (hasRole('PARENT') || hasRole('Parent')) && (
+            resource.data.parentId == request.auth.uid ||
+            resource.data.parentEmail == request.auth.token.email
+          )
+        ) ||
+        (
+          (hasRole('ELEVE') || hasRole('Élève')) && (
+            resource.data.id == request.auth.uid ||
+            resource.data.userId == request.auth.uid
+          )
+        )
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('SUPER_ADMIN') || hasRole('Super Admin') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') || hasRole('DIRECTEUR_GENERAL') || hasRole('Directeur Général') ||
+            hasRole('SECRETAIRE') || hasRole('Secrétaire') || hasRole('Secrétariat') || hasRole('Secrétaire de Direction') ||
+            hasRole('PREFET') || hasRole('Préfet') || hasRole('Préfet des Études') || hasRole('Préfet des études') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('RH_ADMIN') || hasRole('Administrateur RH') || hasRole('Gestionnaire RH')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+          hasRole('DIRECTEUR') || hasRole('Directeur') || hasRole('Directeur Général') ||
+          hasRole('PREFET') || hasRole('Préfet') || hasRole('Préfet des Études') ||
+          hasRole('SUPER_ADMIN') || hasRole('Super Admin')
+        )
+      );
+    }
+
+    // ---------------------------------------------------------------------------
+    // 4. TEACHERS & STAFF (ISOLATED TO SCHOOL TENANT)
+    // ---------------------------------------------------------------------------
+    match /teachers/{teacherId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('SUPER_ADMIN') || hasRole('Super Admin') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') || hasRole('Directeur Général') ||
+            hasRole('PREFET') || hasRole('Préfet') || hasRole('Préfet des Études') || hasRole('Préfet des études') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('RH_ADMIN') || hasRole('Administrateur RH') || hasRole('Gestionnaire RH')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('PROMOTEUR') || hasRole('Promoteur') ||
+          hasRole('DIRECTEUR') || hasRole('Directeur') ||
+          hasRole('RH_ADMIN') || hasRole('Administrateur RH')
+        )
+      );
+    }
+
+    // ---------------------------------------------------------------------------
+    // 5. PARENTS & GUARDIANS (STRICT SCOPING)
+    // ---------------------------------------------------------------------------
+    match /parents/{parentId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == parentId ||
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create, update: if isAuthenticated() && (
+        request.auth.uid == parentId ||
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('SUPER_ADMIN') || hasRole('Super Admin') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') || hasRole('Directeur Général') ||
+            hasRole('PREFET') || hasRole('Préfet') || hasRole('Préfet des Études') ||
+            hasRole('SECRETAIRE') || hasRole('Secrétaire') || hasRole('Secrétariat') || hasRole('Secrétaire de Direction')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner();
+    }
+
+    // ---------------------------------------------------------------------------
+    // 6. FEE PAYMENTS & FINANCIAL TRANSACTIONS (RECALCULATED SERVER-SIDE)
+    // ---------------------------------------------------------------------------
+    match /fee_payments/{paymentId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId)) ||
+        (
+          (hasRole('PARENT') || hasRole('Parent')) && (
+            resource.data.parentId == request.auth.uid ||
+            resource.data.parentEmail == request.auth.token.email
+          )
+        )
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('COMPTABLE') || hasRole('Comptable') ||
+            hasRole('CAISSIER') || hasRole('Caissier') ||
+            hasRole('SECRETAIRE') || hasRole('Secrétariat') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+          hasRole('SUPER_ADMIN') || hasRole('Super Admin')
+        )
+      );
+    }
+
+    match /finance/{recordId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('COMPTABLE') || hasRole('Comptable') ||
+            hasRole('CAISSIER') || hasRole('Caissier') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR')
+        )
+      );
+    }
+
+    // ---------------------------------------------------------------------------
+    // 7. ACADEMIC RECORDS & BULLETINS (TEACHER & STUDENT RESTRICTIONS)
+    // ---------------------------------------------------------------------------
+    match /academic_records/{recordId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId)) ||
+        hasRole('PARENT') || hasRole('Parent') ||
+        hasRole('ELEVE') || hasRole('Élève')
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('ENSEIGNANT') || hasRole('Enseignant') ||
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('DIRECTEUR') || hasRole('Directeur')
+        )
+      );
+    }
+
+    // ---------------------------------------------------------------------------
+    // 8. USER ACCOUNTS & IAM IDENTITIES (MULTI-TENANT ISOLATION)
+    // ---------------------------------------------------------------------------
+    match /user_accounts/{accountId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        request.auth.uid == accountId ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('SUPER_ADMIN') || hasRole('Super Admin') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') ||
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('SECRETAIRE') || hasRole('Secrétaire') ||
+            hasRole('RH_ADMIN') || hasRole('Administrateur RH')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner();
+    }
+
+    // ---------------------------------------------------------------------------
+    // 9. BROADCAST MESSAGES & ANNOUNCEMENTS
+    // ---------------------------------------------------------------------------
+    match /broadcast_messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        resource.data.targetSchoolId == 'all' ||
+        resource.data.targetSchoolId == getUserSchoolId()
+      );
+      allow create, update, delete: if isPlatformOwner();
+    }
+
+    match /platform_staff/{staffId} {
+      allow read: if isPlatformOwner() || (isAuthenticated() && request.auth.uid == staffId);
+      allow create, update, delete: if isPlatformOwner();
+    }
+
+    // ---------------------------------------------------------------------------
+    // 10. PEDAGOGICAL MANAGEMENT, TIMETABLE & CLASS JOURNALS
+    // ---------------------------------------------------------------------------
+    match /course_assignments/{assignmentId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId)) ||
+        resource.data.teacherId == request.auth.uid
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('DIRECTEUR') || hasRole('Directeur') ||
+          hasRole('PREFET') || hasRole('Préfet') ||
+          hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études')
+        )
+      );
+    }
+
+    match /timetable_entries/{entryId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create, update, delete: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') ||
+            hasRole('PROMOTEUR') || hasRole('Promoteur')
+          )
+        )
+      );
+    }
+
+    match /class_journal_entries/{journalId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('ENSEIGNANT') || hasRole('Enseignant') ||
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur')
+          )
+        )
+      );
+      allow update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            resource.data.teacherId == request.auth.uid ||
+            hasRole('ENSEIGNANT') || hasRole('Enseignant') ||
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur') ||
+            hasRole('PARENT') || hasRole('Parent')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('DIRECTEUR') || hasRole('Directeur') ||
+          hasRole('PREFET') || hasRole('Préfet')
+        )
+      );
+    }
+
+    match /pedagogical_forecasts/{forecastId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId))
+      );
+      allow create, update: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (
+          isSchoolMember(request.resource.data.schoolId) && (
+            hasRole('ENSEIGNANT') || hasRole('Enseignant') ||
+            hasRole('PREFET') || hasRole('Préfet') ||
+            hasRole('DIRECTEUR_ETUDES') || hasRole('Directeur des Études') ||
+            hasRole('DIRECTEUR') || hasRole('Directeur')
+          )
+        )
+      );
+      allow delete: if isPlatformOwner() || (
+        isSchoolMember(resource.data.schoolId) && (
+          hasRole('DIRECTEUR') || hasRole('Directeur') ||
+          hasRole('PREFET') || hasRole('Préfet')
+        )
+      );
+    }
+
+    match /course_reminders/{reminderId} {
+      allow read, create, update, delete: if isAuthenticated() && (
+        isPlatformOwner() ||
+        (resource.data.schoolId != null && isSchoolMember(resource.data.schoolId)) ||
+        resource.data.teacherId == request.auth.uid
+      );
+    }
+
+    // ---------------------------------------------------------------------------
+    // 11. AUDIT LOGS & THREAT TRAIL (IMMUTABLE LOGS)
+    // ---------------------------------------------------------------------------
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && (
+        isPlatformOwner() ||
+        hasRole('PROMOTEUR') || hasRole('Promoteur') || hasRole('PROMETEUR') ||
+        hasRole('DIRECTEUR') || hasRole('Directeur') ||
+        hasRole('INSPECTEUR_PROVINCIAL') || hasRole('Inspecteur Provincial') ||
+        hasRole('INSPECTEUR_GENERAL') || hasRole('Inspecteur Général') ||
+        hasRole('ADMINISTRATEUR_NATIONAL_EPST') || hasRole('Administrateur National EPST')
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Audit logs can never be altered or deleted
+    }
+
+    // ---------------------------------------------------------------------------
+    // DEFAULT DENY CATCH-ALL FOR ALL OTHER PATHS
+    // ---------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "entities": {
+    "School": {
+      "title": "School Institution",
+      "description": "Multi-tenant school profile and system parameters",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "codeNational": { "type": "string" },
+        "provinceEducationnelle": { "type": "string" },
+        "customCommissionRate": { "type": "number" }
+      },
+      "required": ["id", "name", "codeNational"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "Authenticated platform user profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "Pupil": {
+      "title": "Student / Pupil Record",
+      "description": "Student record bound to a specific school tenant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "parentEmail": { "type": "string" },
+        "parentId": { "type": "string" }
+      },
+      "required": ["id", "firstName", "lastName", "schoolId"]
+    },
+    "Teacher": {
+      "title": "Teacher Staff Record",
+      "description": "Teacher staff record bound to a specific school tenant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "fullName", "schoolId"]
+    },
+    "Parent": {
+      "title": "Parent / Guardian Record",
+      "description": "Parent guardian record bound to a school or student link",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "parentName": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "studentIds": { "type": "string" }
+      },
+      "required": ["id", "parentName"]
+    },
+    "FeePayment": {
+      "title": "Fee Payment Transaction",
+      "description": "School fee payment transaction record with commission splits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "amountUSD": { "type": "number" },
+        "platformCommissionAmount": { "type": "number" },
+        "schoolShareAmount": { "type": "number" },
+        "commissionStatus": { "type": "string" },
+        "status": { "type": "string" },
+        "isOnSitePayment": { "type": "boolean" },
+        "cashierAgentId": { "type": "string" }
+      },
+      "required": ["id", "studentId", "schoolId", "amountUSD"]
+    },
+    "FinancialRecord": {
+      "title": "Financial Ledger Item",
+      "description": "General school accounting transaction entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "schoolId", "amount"]
+    },
+    "AcademicRecord": {
+      "title": "Academic Bulletin Record",
+      "description": "Academic grade and report card record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "grade": { "type": "number" }
+      },
+      "required": ["id", "schoolId", "studentId"]
+    },
+    "AuditLog": {
+      "title": "Security Audit Log",
+      "description": "Immutable security event and threat audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "action": { "type": "string" },
+        "result": { "type": "string" },
+        "severity": { "type": "string" }
+      },
+      "required": ["id", "actorId", "action"]
+    }
+  },
+  "firestore": {
+    "/schools/{schoolId}": {
+      "schema": "#/entities/School",
+      "description": "School institution profiles"
+    },
+    "/users/{userId}": {
+      "schema": "#/entities/User",
+      "description": "User account profiles"
+    },
+    "/pupils/{pupilId}": {
+      "schema": "#/entities/Pupil",
+      "description": "Student roster documents"
+    },
+    "/teachers/{teacherId}": {
+      "schema": "#/entities/Teacher",
+      "description": "Teacher staff documents"
+    },
+    "/parents/{parentId}": {
+      "schema": "#/entities/Parent",
+      "description": "Parent guardian profiles"
+    },
+    "/fee_payments/{paymentId}": {
+      "schema": "#/entities/FeePayment",
+      "description": "School fee payment transactions"
+    },
+    "/finance/{recordId}": {
+      "schema": "#/entities/FinancialRecord",
+      "description": "School financial ledger entries"
+    },
+    "/academic_records/{recordId}": {
+      "schema": "#/entities/AcademicRecord",
+      "description": "Student grade and academic report records"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "#/entities/AuditLog",
+      "description": "Immutable system and security audit logs"
+    }
+  }
+}

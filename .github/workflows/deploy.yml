@@ -1,0 +1,55 @@
+name: CI/CD SmartSchool RDC - Build & Deploy Auto
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: 🛡️ Audit, Lint & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Récupération du code source (Checkout)
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Configuration de Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Installation des dépendances
+        run: npm ci || npm install
+
+      - name: 🔍 Vérification du Linter et Types TypeScript
+        run: npm run lint
+
+      - name: 🚀 Build de Production Vite & Express
+        run: npm run build
+
+      - name: 📁 Vérification des artéfacts de Build
+        run: |
+          ls -la dist
+          test -f dist/index.html || exit 1
+          test -f dist/server.cjs || exit 1
+
+  deploy-vercel:
+    name: 🌐 Déploiement Gratuit sur Vercel
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: 📥 Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: ⚡ Déploiement automatique sur Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'

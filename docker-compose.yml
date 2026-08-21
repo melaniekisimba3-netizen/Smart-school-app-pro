@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # 1. SmartSchool RDC Application Container
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartschool_app_prod
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://smartschool_admin:${DB_PASSWORD:-StrongProdPass2026!}@postgres_db:5432/smartschool_rdc_prod
+      - REDIS_URL=redis://redis_cache:6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-smartschool_rdc_prod_secret_2026}
+    expose:
+      - "3000"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_cache:
+        condition: service_started
+    volumes:
+      - app_backups:/app/backups
+    networks:
+      - smartschool_net
+
+  # 2. Base de Données PostgreSQL 16 (Production RDC)
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: smartschool_postgres_prod
+    restart: always
+    environment:
+      POSTGRES_USER: smartschool_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-StrongProdPass2026!}
+      POSTGRES_DB: smartschool_rdc_prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartschool_admin -d smartschool_rdc_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartschool_net
+
+  # 3. Cache Redis pour Sessions et Performances
+  redis_cache:
+    image: redis:7-alpine
+    container_name: smartschool_redis_prod
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-RedisSmartPass2026!}
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - smartschool_net
+
+  # 4. Nginx Reverse Proxy & SSL (HTTPS & Hardened Headers)
+  nginx_proxy:
+    image: nginx:alpine
+    container_name: smartschool_nginx_prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - app
+    networks:
+      - smartschool_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  app_backups:
+
+networks:
+  smartschool_net:
+    driver: bridge

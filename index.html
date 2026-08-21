@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartSchool RDC — FRED-TECH | Système de Gestion Scolaire Intelligente</title>
+    <link rel="icon" type="image/png" href="/branding/smartschool-rdc-logo.png" />
+    <link rel="apple-touch-icon" href="/branding/smartschool-rdc-logo.png" />
+    <script>
+      (function() {
+        function createMemoryStore() {
+          var store = {};
+          return {
+            getItem: function(k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          };
+        }
+
+        var memLocal = createMemoryStore();
+        var memSession = createMemoryStore();
+
+        // 1. Intercept localStorage
+        try {
+          var testKey = '__ss_probe_' + Date.now();
+          var nativeLocal = window.localStorage;
+          nativeLocal.setItem(testKey, '1');
+          nativeLocal.removeItem(testKey);
+        } catch (_err) {
+          try {
+            Object.defineProperty(window, 'localStorage', {
+              get: function() { return memLocal; },
+              set: function() {},
+              configurable: true,
+              enumerable: true
+            });
+          } catch (_e1) {
+            try {
+              Object.defineProperty(Window.prototype, 'localStorage', {
+                get: function() { return memLocal; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+            } catch (_e2) {}
+          }
+        }
+
+        // 2. Intercept sessionStorage
+        try {
+          var testKey2 = '__ss_probe2_' + Date.now();
+          var nativeSession = window.sessionStorage;
+          nativeSession.setItem(testKey2, '1');
+          nativeSession.removeItem(testKey2);
+        } catch (_err) {
+          try {
+            Object.defineProperty(window, 'sessionStorage', {
+              get: function() { return memSession; },
+              set: function() {},
+              configurable: true,
+              enumerable: true
+            });
+          } catch (_e1) {
+            try {
+              Object.defineProperty(Window.prototype, 'sessionStorage', {
+                get: function() { return memSession; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+            } catch (_e2) {}
+          }
+        }
+
+        // 3. Global Uncaught SecurityError Suppressor for sandboxed iframe
+        window.addEventListener('error', function(event) {
+          if (event && (
+            (event.message && (
+              event.message.indexOf('operation is insecure') !== -1 ||
+              event.message.indexOf('SecurityError') !== -1 ||
+              event.message.indexOf('Access is denied') !== -1
+            )) ||
+            (event.error && (
+              event.error.name === 'SecurityError' ||
+              (event.error.message && event.error.message.indexOf('insecure') !== -1)
+            ))
+          )) {
+            if (typeof event.preventDefault === 'function') {
+              event.preventDefault();
+            }
+            if (typeof event.stopImmediatePropagation === 'function') {
+              event.stopImmediatePropagation();
+            }
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event && event.reason && (
+            event.reason.name === 'SecurityError' ||
+            (event.reason.message && (
+              event.reason.message.indexOf('operation is insecure') !== -1 ||
+              event.reason.message.indexOf('SecurityError') !== -1 ||
+              event.reason.message.indexOf('Access is denied') !== -1
+            ))
+          )) {
+            if (typeof event.preventDefault === 'function') {
+              event.preventDefault();
+            }
+            if (typeof event.stopImmediatePropagation === 'function') {
+              event.stopImmediatePropagation();
+            }
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
