@@ -24,13 +24,30 @@ export interface SmartTemplateEngineProps {
   lang: string;
 }
 
+const DEFAULT_FALLBACK_STUDENT: Student = {
+  id: "std-demo-01",
+  registrationNumber: "STD-2026-0001",
+  firstName: "Glodi",
+  lastName: "Kabasele",
+  fullName: "Glodi Kabasele",
+  postName: "Mukendi",
+  birthDate: "12/03/2012",
+  gender: "M",
+  address: "Kinshasa, Gombe",
+  parentName: "M. Kabasele",
+  parentPhone: "+243 812 000 000",
+  className: "6ème Primaire A",
+  optionName: "Primaire",
+  status: "Actif"
+};
+
 export function SmartTemplateEngine({
-  students,
-  grades,
-  cnrResources,
+  students = [],
+  grades = [],
+  cnrResources = [],
   onAddResource,
   onUpdateResource,
-  schoolSyncLogs,
+  schoolSyncLogs = [],
   onSyncResource,
   onSyncAll,
   lang
@@ -43,13 +60,43 @@ export function SmartTemplateEngine({
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   
+  // Safe fallbacks for lists
+  const safeStudents = (students && students.length > 0) ? students : [DEFAULT_FALLBACK_STUDENT];
+  const safeCnrResources = (cnrResources && cnrResources.length > 0) ? cnrResources : initialTemplateModels;
+
   // Active selected template in the UI
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("cnr-1");
-  const activeTemplate = cnrResources.find(t => t.id === selectedTemplateId) || cnrResources[0];
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(safeCnrResources[0]?.id || "cnr-1");
+  const activeTemplate = safeCnrResources.find(t => t.id === selectedTemplateId) || safeCnrResources[0] || initialTemplateModels[0];
 
   // Active student selected for printing/rendering
-  const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || "std-1");
-  const selectedStudent = students.find(s => s.id === selectedStudentId) || students[0];
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(safeStudents[0]?.id || DEFAULT_FALLBACK_STUDENT.id);
+  const selectedStudent = safeStudents.find(s => s.id === selectedStudentId) || safeStudents[0] || DEFAULT_FALLBACK_STUDENT;
+
+  // Safe student demographic accessors
+  const studentRegNumber = selectedStudent?.registrationNumber || selectedStudent?.id || "STD-2026-0001";
+  const studentLastName = selectedStudent?.lastName || "Élève";
+  const studentFirstName = selectedStudent?.firstName || "";
+  const studentGender = selectedStudent?.gender || "M";
+  const studentBirthDate = selectedStudent?.birthDate || "12/03/2012";
+  const studentClassName = selectedStudent?.className || "6ème Primaire";
+  const studentOptionName = selectedStudent?.optionName || "Section Générale";
+
+  // Synchronize selection when props change
+  useEffect(() => {
+    if (students && students.length > 0) {
+      if (!students.some(s => s.id === selectedStudentId)) {
+        setSelectedStudentId(students[0].id);
+      }
+    }
+  }, [students, selectedStudentId]);
+
+  useEffect(() => {
+    if (cnrResources && cnrResources.length > 0) {
+      if (!cnrResources.some(t => t.id === selectedTemplateId)) {
+        setSelectedTemplateId(cnrResources[0].id);
+      }
+    }
+  }, [cnrResources, selectedTemplateId]);
 
   // Template editor states (for CNR EPST portal)
   const [isEditing, setIsEditing] = useState(false);
@@ -248,7 +295,7 @@ export function SmartTemplateEngine({
       }
 
       // 2. Signatures validation
-      const signaturesExist = selectedStudent && selectedStudent.status === "Actif";
+      const signaturesExist = selectedStudent && (selectedStudent.status === "Actif" || selectedStudent.status === "Validé");
       if (!signaturesExist) {
         logs.push({ 
           type: "warning", 
@@ -262,7 +309,7 @@ export function SmartTemplateEngine({
       }
 
       // 3. Calculation and fields check
-      const studentGrades = grades.filter(g => g.studentId === selectedStudent.id);
+      const studentGrades = grades ? grades.filter(g => g.studentId === selectedStudent?.id) : [];
       const isMissingGrades = studentGrades.length === 0;
       
       if (activeTemplate.category === "bulletin" && isMissingGrades) {
@@ -303,26 +350,26 @@ export function SmartTemplateEngine({
 
   // Compile helper to replace variables
   const compileText = (text: string) => {
-    if (!text || !selectedStudent) return text;
+    if (!text) return "";
     
     // Derive dynamic mock percentages and ranks for rich representation
-    const studentGrades = grades.filter(g => g.studentId === selectedStudent.id);
-    const totalPointsObtained = studentGrades.reduce((acc, curr) => acc + curr.scoreObtained, 0);
-    const totalMax = studentGrades.reduce((acc, curr) => acc + curr.maxScore, 0) || 500;
+    const studentGrades = grades ? grades.filter(g => g.studentId === selectedStudent?.id) : [];
+    const totalPointsObtained = studentGrades.reduce((acc, curr) => acc + (curr.scoreObtained || 0), 0);
+    const totalMax = studentGrades.reduce((acc, curr) => acc + (curr.maxScore || 0), 0) || 500;
     const computedPercentage = ((totalPointsObtained / totalMax) * 100) || 72.4;
     const dec = computedPercentage >= 50 ? "Admis(e) dans la classe supérieure" : "Refusé(e) / Redouble la classe";
     const ment = computedPercentage >= 80 ? "Grande Distinction" : computedPercentage >= 70 ? "Distinction" : computedPercentage >= 50 ? "Satisfaction" : "Médiocre";
 
     const vars: Record<string, string> = {
-      "{{Nom_Eleve}}": selectedStudent.lastName,
-      "{{PostNom}}": selectedStudent.lastName, // In Congo Postnom is common
-      "{{Prénom}}": selectedStudent.firstName,
-      "{{Matricule}}": selectedStudent.registrationNumber,
-      "{{Sexe}}": selectedStudent.gender,
+      "{{Nom_Eleve}}": studentLastName,
+      "{{PostNom}}": selectedStudent?.postName || studentLastName, // In Congo Postnom is common
+      "{{Prénom}}": studentFirstName,
+      "{{Matricule}}": studentRegNumber,
+      "{{Sexe}}": studentGender,
       "{{Lieu_Naissance}}": "Kinshasa",
-      "{{Date_Naissance}}": selectedStudent.birthDate || "12/03/2012",
-      "{{Classe}}": selectedStudent.className,
-      "{{Option}}": selectedStudent.optionName,
+      "{{Date_Naissance}}": studentBirthDate,
+      "{{Classe}}": studentClassName,
+      "{{Option}}": studentOptionName,
       "{{Section}}": "Primaire",
       "{{Année_Scolaire}}": "2025-2026",
       "{{École}}": "Lycée Prince de Liège / CS Cardinal Malula",
@@ -339,7 +386,7 @@ export function SmartTemplateEngine({
       "{{Application}}": "Excellente",
       "{{Date_Emission}}": new Date().toLocaleDateString("fr-FR"),
       "{{Signature_Directeur}}": "M. Sylvain Kabulo",
-      "{{QRCode}}": `SECURE-ID-RDC-${selectedStudent.registrationNumber}-2026`
+      "{{QRCode}}": `SECURE-ID-RDC-${studentRegNumber}-2026`
     };
 
     let result = text;
@@ -558,7 +605,7 @@ export function SmartTemplateEngine({
               <span className="text-xs font-black text-slate-500 uppercase block tracking-wider">Élève de démo (Fiche d'essai)</span>
               
               <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
-                {students.map((s) => (
+                {safeStudents.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => {
@@ -573,7 +620,7 @@ export function SmartTemplateEngine({
                     }`}
                   >
                     <span className="block font-bold">{s.lastName} {s.firstName}</span>
-                    <span className="text-[9px] text-slate-400 block">{s.className} • {s.registrationNumber}</span>
+                    <span className="text-[9px] text-slate-400 block">{s.className || "Classe primaire"} • {s.registrationNumber || s.id}</span>
                   </button>
                 ))}
               </div>
@@ -1008,12 +1055,12 @@ export function SmartTemplateEngine({
                     {/* Center: Main metadata ID */}
                     <div className="text-center space-y-1">
                       <div className="border border-slate-950 px-2 py-0.5 font-mono text-[9px] font-black uppercase bg-slate-50">
-                        N° ID. : RDC-{selectedStudent.registrationNumber}-2026
+                        N° ID. : RDC-{studentRegNumber}-2026
                       </div>
                       <div className="flex gap-0.5 mt-1 justify-center">
                         {Array.from({ length: 18 }).map((_, idx) => (
                           <span key={idx} className="w-3.5 h-4 border border-slate-950 text-[9px] text-center font-bold font-mono">
-                            {selectedStudent.registrationNumber[idx % selectedStudent.registrationNumber.length] || ""}
+                            {studentRegNumber[idx % Math.max(1, studentRegNumber.length)] || ""}
                           </span>
                         ))}
                       </div>
@@ -1039,11 +1086,11 @@ export function SmartTemplateEngine({
                     </div>
                     
                     <div className="space-y-1 pl-4">
-                      <div><span className="font-bold uppercase">ÉLÈVE :</span> <span className="font-black text-sm">{selectedStudent.lastName} {selectedStudent.firstName}</span></div>
-                      <div><span className="font-bold uppercase">SEXE :</span> <span className="font-mono">{selectedStudent.gender}</span></div>
-                      <div><span className="font-bold uppercase">NÉ(E) À :</span> <span className="font-semibold">KINSHASA</span> <span className="font-bold uppercase">LE :</span> <span className="font-mono">{selectedStudent.birthDate}</span></div>
-                      <div><span className="font-bold uppercase">CLASSE :</span> <span className="font-mono font-bold">{selectedStudent.className}</span></div>
-                      <div><span className="font-bold uppercase">N° PERM. (NATIONAL) :</span> <span className="font-mono font-black text-brand-blue">{selectedStudent.registrationNumber}</span></div>
+                      <div><span className="font-bold uppercase">ÉLÈVE :</span> <span className="font-black text-sm">{studentLastName} {studentFirstName}</span></div>
+                      <div><span className="font-bold uppercase">SEXE :</span> <span className="font-mono">{studentGender}</span></div>
+                      <div><span className="font-bold uppercase">NÉ(E) À :</span> <span className="font-semibold">KINSHASA</span> <span className="font-bold uppercase">LE :</span> <span className="font-mono">{studentBirthDate}</span></div>
+                      <div><span className="font-bold uppercase">CLASSE :</span> <span className="font-mono font-bold">{studentClassName}</span></div>
+                      <div><span className="font-bold uppercase">N° PERM. (NATIONAL) :</span> <span className="font-mono font-black text-brand-blue">{studentRegNumber}</span></div>
                     </div>
                   </div>
 
@@ -1099,7 +1146,7 @@ export function SmartTemplateEngine({
                             {/* Branches */}
                             {domain.branches.map((b, bIdx) => {
                               // Dynamically generate simulated scores for realistic rendering
-                              const hash = (selectedStudent.lastName.length + b.name.length + bIdx) % 5;
+                              const hash = ((studentLastName.length || 5) + b.name.length + bIdx) % 5;
                               const scoreOffset = hash === 0 ? 0.9 : hash === 1 ? 0.8 : hash === 2 ? 0.75 : hash === 3 ? 0.65 : 0.85;
                               
                               const ptsP1 = Math.round(b.maxInterro * scoreOffset);
@@ -1286,7 +1333,7 @@ export function SmartTemplateEngine({
                   {/* Absolute Footer with ID details */}
                   <div className="absolute bottom-6 left-8 right-8 flex justify-between items-end border-t border-slate-200 pt-3 text-[9px] text-slate-400 font-mono">
                     <div>
-                      <span>CODE UNIQUE : RDC-STT-{activeTemplate.id.toUpperCase()}-{selectedStudent.registrationNumber}</span>
+                      <span>CODE UNIQUE : RDC-STT-{activeTemplate?.id?.toUpperCase() || "CNR"}-{studentRegNumber}</span>
                     </div>
                     <div className="flex items-center space-x-1 bg-slate-50 p-1 border">
                       <QrCode className="h-6 w-6 text-slate-700" />

@@ -1,4 +1,4 @@
-import { PedagogicalCurriculumModel, SchoolRoom } from "../types";
+import { PedagogicalCurriculumModel, SchoolRoom, Subject } from "../types";
 
 /**
  * MODÈLES PÉDAGOGIQUES OFFICIELS DE LA RÉPUBLIQUE DÉMOCRATIQUE DU CONGO
@@ -203,3 +203,54 @@ export const NATIONAL_CURRICULUM_MODELS: PedagogicalCurriculumModel[] = [
     ]
   }
 ];
+
+/**
+ * Génère la liste complète et normalisée de toutes les matières officielles de la RDC
+ * pour une école donnée (ou bibliothèque nationale globale).
+ */
+export function getOfficialRDCSubjects(schoolId: string = "sch-001"): Subject[] {
+  const allSubjects: Subject[] = [];
+  const seenCodes = new Set<string>();
+
+  NATIONAL_CURRICULUM_MODELS.forEach((model) => {
+    let educationLevel: "maternelle" | "primaire" | "secondaire" | "humanites" = "secondaire";
+    if (model.cycle === "Maternelle") educationLevel = "maternelle";
+    else if (model.cycle === "Primaire") educationLevel = "primaire";
+    else if (model.level?.includes("Humanités")) educationLevel = "humanites";
+    else if (model.level?.includes("Éducation de Base") || model.level?.includes("EB")) educationLevel = "secondaire";
+
+    model.subjects.forEach((sub, idx) => {
+      const code = sub.code || `RDC-${model.cycle.slice(0, 3).toUpperCase()}-${idx + 1}`;
+      const uniqueKey = `${educationLevel}_${model.optionName}_${sub.name}`;
+      
+      if (!seenCodes.has(uniqueKey)) {
+        seenCodes.add(uniqueKey);
+        allSubjects.push({
+          id: `subj-rdc-${model.id}-${idx + 1}`,
+          schoolId,
+          name: sub.name,
+          category: sub.category,
+          hoursPerWeek: sub.hoursPerWeek,
+          coefficient: sub.coefficient || 1,
+          isCommon: sub.isCommon ?? true,
+          isOptional: sub.isOptional ?? false,
+          maxPointsInterro: sub.maxPointsInterro,
+          maxPointsExamen: sub.maxPointsExamen,
+          code,
+          cycle: model.cycle,
+          levelCategory: model.cycle,
+          educationLevel,
+          level: model.level,
+          optionName: model.optionName,
+          section: model.optionName,
+          option: model.optionName,
+          isOfficialRDC: true,
+          description: `Matière officielle du programme national RDC (${model.name})`
+        });
+      }
+    });
+  });
+
+  return allSubjects;
+}
+

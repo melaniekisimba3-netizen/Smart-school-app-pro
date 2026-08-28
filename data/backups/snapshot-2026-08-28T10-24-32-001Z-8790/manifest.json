@@ -1,0 +1,15 @@
+{
+  "snapshotId": "snapshot-2026-08-28T10-24-32-001Z-8790",
+  "timestamp": "2026-08-28T10:24:32.001Z",
+  "reason": "Mise à jour vers 2026.3.0-PROD demandée par Promoteur",
+  "sourceVersion": "2026.2.1-LTS",
+  "schemaVersion": "2026.2.0",
+  "schools": [
+    {
+      "schoolId": "sch-141992",
+      "collections": [
+        "employees.json"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   BookOpen, 
@@ -65,8 +65,15 @@ export const ClassJournalModule: React.FC<ClassJournalModuleProps> = ({
 
   // New Journal Entry Form State
   const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
-  const [formClass, setFormClass] = useState(classes[0] ? `${classes[0].level} ${classes[0].roomLetter}` : "6ème Primaire A");
+  const [formClass, setFormClass] = useState(classes[0] ? (classes[0].name || `${classes[0].level} ${classes[0].roomLetter}`.trim()) : "");
   const [formSubject, setFormSubject] = useState("Mathématiques");
+
+  // Sync formClass if classes prop changes
+  useEffect(() => {
+    if (classes.length > 0 && (!formClass || !classes.some(c => (c.name === formClass || `${c.level} ${c.roomLetter}`.trim() === formClass)))) {
+      setFormClass(classes[0].name || `${classes[0].level} ${classes[0].roomLetter}`.trim());
+    }
+  }, [classes]);
   const [formPeriod, setFormPeriod] = useState("1ère Heure (07h30-08h20)");
   const [formStatus, setFormStatus] = useState<"Dispensé" | "Partiellement dispensé" | "Non dispensé" | "Rattrapé">("Dispensé");
   const [formLessonTitle, setFormLessonTitle] = useState("");

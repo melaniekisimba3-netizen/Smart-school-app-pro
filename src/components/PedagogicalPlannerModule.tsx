@@ -59,7 +59,7 @@ export const PedagogicalPlannerModule: React.FC<PedagogicalPlannerModuleProps> =
   const [searchQuery, setSearchQuery] = useState("");
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [formClassName, setFormClassName] = useState(classes[0] ? `${classes[0].level} ${classes[0].roomLetter}` : "6ème Primaire A");
+  const [formClassName, setFormClassName] = useState(classes[0] ? (classes[0].name || `${classes[0].level} ${classes[0].roomLetter}`.trim()) : "");
   const [formSubjectName, setFormSubjectName] = useState("Mathématiques");
   const [formTeacherName, setFormTeacherName] = useState(teachers[0] ? getTeacherDisplayName(teachers[0]) : "Jean Mukendi");
   const [formChapterTitle, setFormChapterTitle] = useState("");

@@ -493,7 +493,7 @@ export function SchoolAdministrationPortalModule({
       }
     }
 
-    const newAccountId = `acc-${schoolId}-${selectedPortalForAction.id}-${Date.now().toString().slice(-4)}`;
+    const newAccountId = `acc-${schoolId}-${selectedPortalForAction.id}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newAccount: UserAccount = {
       id: newAccountId,
       dossierId: targetEmployeeId,
@@ -669,7 +669,7 @@ export function SchoolAdministrationPortalModule({
     }
 
     // 3. Create fresh new account for the new person
-    const newAccountId = `acc-${schoolId}-${selectedPortalForAction.id}-${Date.now().toString().slice(-4)}`;
+    const newAccountId = `acc-${schoolId}-${selectedPortalForAction.id}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newAccount: UserAccount = {
       id: newAccountId,
       dossierId: newTargetEmployeeId,

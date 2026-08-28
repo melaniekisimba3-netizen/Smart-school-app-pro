@@ -120,8 +120,8 @@ export function PupilsView({
   const [newPIsPrimary, setNewPIsPrimary] = useState(true);
 
   const availableClasses = classes.length > 0 
-    ? classes.map(c => `${c.classGrade || c.level} ${c.roomLetter}`) 
-    : ["1ère année A", "2ème année A", "3ème année A", "4ème année A", "5ème année A", "6ème année A", "7ème EB A", "8ème EB A", "1ère Humanités A", "2ème Humanités A", "3ème Humanités A", "4ème Humanités B"];
+    ? classes.map(c => c.name || `${c.classGrade || c.level} ${c.roomLetter}`.trim()).filter(Boolean) 
+    : [];
   
   const activeOptions = options.length > 0
     ? options.filter(o => o.isActivated !== false).map(o => o.name)

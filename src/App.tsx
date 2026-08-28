@@ -93,6 +93,7 @@ import { TeacherModule } from "./components/TeacherModule";
 import { IntegratedTimetableManagementView } from "./components/IntegratedTimetableManagementView";
 import { PedagogicalPlannerModule } from "./components/PedagogicalPlannerModule";
 import { ClassJournalModule } from "./components/ClassJournalModule";
+import { EvaluationGradingSystem } from "./components/EvaluationGradingSystem";
 
 import { SmartTemplateEngine } from "./components/SmartTemplateEngine";
 import { SchoolManagement } from "./components/SchoolManagement";
@@ -108,6 +109,7 @@ import { Crown, KeyRound, Presentation } from "lucide-react";
 import { SmartSchoolPresentationDocument } from "./components/SmartSchoolPresentationDocument";
 import { NationalCultureHeritageModule } from "./components/NationalCultureHeritageModule";
 import { OwnerControlCenter } from "./components/OwnerControlCenter";
+import { PromoterFinancialControlCenter } from "./components/PromoterFinancialControlCenter";
 import { ManageSchoolsModule } from "./components/ManageSchoolsModule";
 import { NationalUserAccountsIAMModule } from "./components/NationalUserAccountsIAMModule";
 import { OfficialLoginSheetModal } from "./components/OfficialLoginSheetModal";
@@ -156,6 +158,8 @@ import {
 import { fetchPlatformBranding } from "./services/platformBrandingService";
 import { SmartSchoolLogo } from "./components/SmartSchoolLogo";
 import { CongoleseStudentsStudyAnimation } from "./components/CongoleseStudentsStudyAnimation";
+import { School3DLandingHero } from "./components/School3DLandingHero";
+import { SchoolWelcome3DAnimation } from "./components/SchoolWelcome3DAnimation";
 import { SMARTSCHOOL_OFFICIAL_LOGO, SMARTSCHOOL_SIGNATURE } from "./constants/branding";
 
 
@@ -178,7 +182,7 @@ import {
   Employee, EmployeeAttendance, EmployeeLeave, EmployeePromotion,
   EmployeeSanction, EmployeeEvaluation, EmployeeTraining, EmployeeMutation,
   HrAuditLog, UserAccount, StudentGuardianLink, ParentGuardianLink,
-  PlatformStaffMember
+  PlatformStaffMember, SchoolBulletinPermissions
 } from "./types";
 
 export function getTabMetadata(tab: string) {
@@ -584,6 +588,7 @@ export default function App() {
   const [submitStep, setSubmitStep] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successState, setSuccessState] = useState(false);
+  const [showWelcome3DAnimation, setShowWelcome3DAnimation] = useState(false);
   const [userRole, setUserRole] = useState("Préfet des études");
   const [userName, setUserName] = useState("Ir IT Fred Kalonda");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -626,7 +631,7 @@ export default function App() {
         accountStatus: "pending_activation",
         hasUserAccount: true,
         qrCodeData: std.qrCodeData || `https://smartschool.cd/verify/${matricule}`,
-        photoUrl: std.photoUrl || (idx < 2 ? `https://images.unsplash.com/photo-${1500000000000 + idx * 10000000}?auto=format&fit=crop&q=80&w=200` : undefined)
+        photoUrl: std.photoUrl || undefined
       };
     });
   });
@@ -652,6 +657,19 @@ export default function App() {
   const [subjects, setSubjects] = useState<Subject[]>(initialSubjects);
   const [attendances, setAttendances] = useState<Attendance[]>(initialAttendances);
   const [grades, setGrades] = useState<Grade[]>(initialGrades);
+  const [bulletinSettings, setBulletinSettings] = useState<SchoolBulletinPermissions>(() => {
+    try {
+      const saved = safeLocalStorage.getItem(`ssrdc_${activeSchoolId}_bulletin_permissions`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      allowTeacherDownload: true,
+      allowTeacherPrint: true,
+      publishToStudents: false,
+      publishToParents: false,
+      requireDirectionValidation: true
+    };
+  });
   const [payments, setPayments] = useState<Payment[]>(initialPayments);
   const [timetable, setTimetable] = useState<TimetableEntry[]>(initialTimetable);
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
@@ -913,7 +931,7 @@ export default function App() {
           if (index >= 0) {
             return prev.map((a, i) => i === index ? { ...a, ...syncedAccount } : a);
           }
-          return [syncedAccount, ...prev];
+          return [syncedAccount, ...prev.filter(a => a.id !== syncedAccount.id)];
         });
       }
     };
@@ -1185,6 +1203,8 @@ export default function App() {
   const [schoolName, setSchoolName] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>("2026-2027");
 
+  const activeSchool = schools.find(s => s.id === activeSchoolId) || schools[0];
+
   // Load persistent schools on mount
   useEffect(() => {
     loadPersistentCollection<SchoolType>("global", "schools", []).then(loadedSchools => {
@@ -1430,7 +1450,7 @@ export default function App() {
       creatorRole: "Système Central"
     };
 
-    setUserAccounts(prev => [createdAccount, ...prev]);
+    setUserAccounts(prev => [createdAccount, ...prev.filter(a => a.id !== createdAccount.id)]);
     persistUniversalUserAccount(createdAccount);
 
     centralAuthService.startSession({
@@ -1452,6 +1472,7 @@ export default function App() {
     setCurrentUserId(newEmpId);
     setCurrentUserAccount(createdAccount);
     setSuccessState(true);
+    setShowWelcome3DAnimation(true);
     setActiveTab("admin_ecole");
     setToast({
       message: `Bienvenue sur SmartSchool RDC ! Établissement "${newSchool.name}" enrôlé avec succès.`,
@@ -1813,11 +1834,15 @@ export default function App() {
   };
   const handleAddClass = (classData: Omit<ClassRoom, "id"> | Omit<ClassRoom, "id">[]) => {
     if (Array.isArray(classData)) {
-      const newClasses = classData.map((c, idx) => ({
-        ...c,
-        schoolId: activeSchoolId,
-        id: `cls-${Date.now()}-${idx}-${Math.random().toString(36).substring(2,5)}`
-      }));
+      const newClasses = classData.map((c, idx) => {
+        const canonicalName = c.name || `${c.classGrade || c.level} ${c.roomLetter}`.trim();
+        return {
+          ...c,
+          name: canonicalName,
+          schoolId: activeSchoolId,
+          id: `cls-${Date.now()}-${idx}-${Math.random().toString(36).substring(2,5)}`
+        };
+      });
       setClasses(prev => {
         const filteredNew = newClasses.filter(newC => 
           !prev.some(oldC => 
@@ -1830,8 +1855,10 @@ export default function App() {
         return [...prev, ...filteredNew];
       });
     } else {
+      const canonicalName = classData.name || `${classData.classGrade || classData.level} ${classData.roomLetter}`.trim();
       const newClass: ClassRoom = {
         ...classData,
+        name: canonicalName,
         schoolId: activeSchoolId,
         id: `cls-${Date.now()}`
       };
@@ -1846,6 +1873,10 @@ export default function App() {
         return [...prev, newClass];
       });
     }
+  };
+
+  const handleDeleteClass = (id: string) => {
+    setClasses(prev => prev.filter(c => c.id !== id));
   };
 
   const handleToggleOption = (id: string) => {
@@ -2063,7 +2094,7 @@ export default function App() {
       securityQuestionsSet: false,
       connectedDevices: accountData.connectedDevices || []
     };
-    setUserAccounts(prev => [newAcc, ...prev]);
+    setUserAccounts(prev => [newAcc, ...prev.filter(a => a.id !== newAcc.id)]);
     return newAcc;
   };
 
@@ -2326,6 +2357,7 @@ export default function App() {
           setUserName(ownerConfig.name);
           setSchoolName("Plateforme Nationale SmartSchool RDC");
           setSuccessState(true);
+          setShowWelcome3DAnimation(true);
           setActiveTab("owner_control_center");
         }, 500);
       }, 500);
@@ -2442,6 +2474,7 @@ export default function App() {
           setSchoolName(schoolNameToSet);
 
           setSuccessState(true);
+          setShowWelcome3DAnimation(true);
           
           // Trigger First-Time Login Security Wizard only if user requires initial password configuration
           if (loginRes.mustChangePassword) {
@@ -2487,6 +2520,7 @@ export default function App() {
   const resetForm = () => {
     centralAuthService.logout();
     setSuccessState(false);
+    setShowWelcome3DAnimation(false);
     setPassword("");
     setEmailOrPhone("");
     setUserName("");
@@ -2570,11 +2604,11 @@ export default function App() {
     const principalItems = [];
     principalItems.push({ tab: "dashboard", label: "Tableau de Bord", icon: Activity });
     
-    if (["PROMOTEUR", "SUPER ADMINISTRATEUR DE L'ÉTABLISSEMENT", "DIRECTEUR GÉNÉRAL", "PRÉFET DES ÉTUDES", "PRÉFET", "SECRÉTAIRE", "GESTIONNAIRE", "ADMINISTRATEUR RH"].some(r => roleUpper.includes(r))) {
+    if (["PROMOTEUR", "SUPER ADMINISTRATEUR DE L'ÉTABLISSEMENT", "DIRECTEUR GÉNÉRAL", "PROPRIÉTAIRE", "PRÉFET DES ÉTUDES", "PRÉFET", "SECRÉTAIRE", "GESTIONNAIRE", "ADMINISTRATEUR RH"].some(r => roleUpper.includes(r))) {
+      principalItems.push({ tab: "promoteur_finance_center", label: "Contrôle Suprême du Promoteur", icon: Crown });
       principalItems.push({ tab: "admin_ecole", label: "Administration de mon école", icon: ShieldCheck });
     }
 
-    principalItems.push({ tab: "analyste_ia", label: "Analyste IA & Assistant", icon: Sparkles });
     principalItems.push({ tab: "presentation_officielle", label: "Dossier & Plaquette (PDF/PPTX)", icon: Presentation });
     principalItems.push({ tab: "promo_video", label: "Vidéo Pub Officielle", icon: Tv });
     principalItems.push({ tab: "messagerie", label: "Messagerie & Chat", icon: MessageSquare });
@@ -2735,6 +2769,7 @@ export default function App() {
           group: "Contrôle Suprême",
           items: [
             { tab: "owner_control_center", label: "Centre de Contrôle Propriétaire", icon: Crown },
+            { tab: "promoteur_finance_center", label: "Surveillance Financière & Anti-Fraude", icon: ShieldAlert },
             { tab: "manage_schools", label: "Gérer les écoles", icon: Building2 },
             { tab: "sa_backup_disaster_recovery", label: "Sauvegarde & Reprise Sinistre", icon: Database },
           ]
@@ -2794,16 +2829,13 @@ export default function App() {
     const getRoleFilteredClasses = (rawClasses: ClassRoom[]) => {
       const schoolFiltered = rawClasses.filter(c => c.schoolId === activeSchoolId || (!c.schoolId && (activeSchoolId === "default" || activeSchoolId === "sch-001")));
       if (isMaternelleOnly) {
-        const mat = schoolFiltered.filter(c => c.levelCategory === "Maternelle" || String(c.level).toLowerCase().includes("section") || String(c.classGrade).toLowerCase().includes("section"));
-        return mat.length > 0 ? mat : schoolFiltered;
+        return schoolFiltered.filter(c => c.levelCategory === "Maternelle" || String(c.level).toLowerCase().includes("section") || String(c.classGrade).toLowerCase().includes("section"));
       }
       if (isPrimaireOnly) {
-        const prim = schoolFiltered.filter(c => c.levelCategory === "Primaire" || String(c.level).toLowerCase().includes("primaire") || (String(c.level).toLowerCase().includes("année") && !String(c.level).toLowerCase().includes("humanités") && !String(c.level).toLowerCase().includes("eb")) || (String(c.classGrade).toLowerCase().includes("année") && !String(c.classGrade).toLowerCase().includes("humanités") && !String(c.classGrade).toLowerCase().includes("eb")));
-        return prim.length > 0 ? prim : schoolFiltered;
+        return schoolFiltered.filter(c => c.levelCategory === "Primaire" || String(c.level).toLowerCase().includes("primaire") || (String(c.level).toLowerCase().includes("année") && !String(c.level).toLowerCase().includes("humanités") && !String(c.level).toLowerCase().includes("eb")) || (String(c.classGrade).toLowerCase().includes("année") && !String(c.classGrade).toLowerCase().includes("humanités") && !String(c.classGrade).toLowerCase().includes("eb")));
       }
       if (isSecondaireOnly) {
-        const sec = schoolFiltered.filter(c => c.levelCategory === "Secondaire" || String(c.level).toLowerCase().includes("humanités") || String(c.level).toLowerCase().includes("eb") || String(c.classGrade).toLowerCase().includes("humanités") || String(c.classGrade).toLowerCase().includes("eb") || String(c.sectionName || "").toLowerCase().includes("secondaire") || String(c.sectionName || "").toLowerCase().includes("humanit") || String(c.sectionName || "").toLowerCase().includes("base"));
-        return sec.length > 0 ? sec : schoolFiltered;
+        return schoolFiltered.filter(c => c.levelCategory === "Secondaire" || String(c.level).toLowerCase().includes("humanités") || String(c.level).toLowerCase().includes("eb") || String(c.classGrade).toLowerCase().includes("humanités") || String(c.classGrade).toLowerCase().includes("eb") || String(c.sectionName || "").toLowerCase().includes("secondaire") || String(c.sectionName || "").toLowerCase().includes("humanit") || String(c.sectionName || "").toLowerCase().includes("base"));
       }
       return schoolFiltered;
     };
@@ -2883,6 +2915,7 @@ export default function App() {
           payments={payments}
           grades={grades}
           attendances={attendances}
+          bulletinSettings={bulletinSettings}
           onNavigateToMessagerie={(targetId) => {
             setInitialTargetChatUserId(targetId || null);
             setActiveTab("messagerie");
@@ -2899,7 +2932,13 @@ export default function App() {
           currentUserId={currentUserId || undefined}
           students={students}
           parents={parents}
+          teachers={teachers}
+          classes={filteredCls}
+          subjects={subjects}
           payments={payments}
+          grades={grades}
+          attendances={attendances}
+          bulletinSettings={bulletinSettings}
           onNavigateToMessagerie={(targetId) => {
             setInitialTargetChatUserId(targetId || null);
             setActiveTab("messagerie");
@@ -2926,7 +2965,31 @@ export default function App() {
         <TeacherModule
           userRole={userRole}
           userName={userName}
-          students={students}
+          userEmail={emailOrPhone}
+          currentUserId={currentUserId || undefined}
+          currentUserAccount={currentUserAccount}
+          students={filteredStds}
+          teachers={teachers}
+          classes={filteredCls}
+          subjects={subjects}
+          grades={grades}
+          attendances={attendances}
+          activeSchool={activeSchool}
+          academicYear="2025-2026"
+          schoolId={activeSchoolId}
+          onSaveAttendance={(newAtts) => {
+            setAttendances(prev => {
+              const ids = new Set(newAtts.map(a => `${a.studentId}_${a.date}`));
+              return [...newAtts, ...prev.filter(a => !ids.has(`${a.studentId}_${a.date}`))];
+            });
+          }}
+          onSaveGrades={(newGrds) => {
+            setGrades(prev => {
+              const ids = new Set(newGrds.map(g => `${g.studentId}_${g.subjectId || g.subjectName}_${g.period || g.evaluationType || "T1"}`));
+              return [...newGrds, ...prev.filter(g => !ids.has(`${g.studentId}_${g.subjectId || g.subjectName}_${g.period || g.evaluationType || "T1"}`))];
+            });
+          }}
+          bulletinSettings={bulletinSettings}
           onAddNotification={(notif) => setNotifications(prev => [notif, ...prev])}
         />
       );
@@ -3036,7 +3099,11 @@ export default function App() {
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
             onAddUserAccount={(acc) => {
-              setUserAccounts(prev => [acc, ...prev]);
+              setUserAccounts(prev => {
+                const idx = prev.findIndex(a => a.id === acc.id || (a.username && a.username.toLowerCase() === acc.username.toLowerCase()));
+                if (idx >= 0) return prev.map((a, i) => i === idx ? { ...a, ...acc } : a);
+                return [acc, ...prev.filter(a => a.id !== acc.id)];
+              });
               persistUniversalUserAccount(acc);
             }}
             onUpdateUserAccount={(acc) => {
@@ -3089,6 +3156,48 @@ export default function App() {
             teachers={teachers}
             onAddTeacher={handleAddTeacher}
             onDeleteTeacher={handleDeleteTeacher}
+            onUpdateTeacher={(updated) => {
+              setTeachers(prev => prev.map(t => t.id === updated.id ? updated : t));
+            }}
+            onUpdateTeachers={setTeachers}
+            userAccounts={userAccounts}
+            onUpdateUserAccounts={setUserAccounts}
+            classes={filteredCls}
+            subjects={subjects}
+            schoolId={activeSchoolId}
+            schoolName={schoolName}
+            schoolLogoUrl={schoolLogoUrl}
+            schoolMotto={schoolMotto}
+            onOpenPortal={(acc) => {
+              setUserRole(acc.role);
+              setUserName(acc.fullName);
+              setEmailOrPhone(acc.email || acc.phone || acc.username);
+              setCurrentUserId(acc.dossierId || acc.id);
+              setCurrentUserAccount(acc);
+              if (acc.schoolId) setActiveSchoolId(acc.schoolId);
+              if (acc.schoolName) setSchoolName(acc.schoolName);
+              setActiveTab(acc.targetPortalTab || "dashboard");
+              setToast({
+                message: `Basculement direct sur le ${acc.role} : ${acc.fullName}`,
+                type: "success"
+              });
+            }}
+            onAddAuditLog={(action, target) => {
+              setInscriptionAuditLogs(prev => [
+                {
+                  id: `log-${Date.now()}`,
+                  studentName: target,
+                  actorName: userName,
+                  actorRole: userRole,
+                  date: new Date().toLocaleDateString("fr-FR"),
+                  time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+                  ipAddress: "192.168.1.10",
+                  device: "SmartSchool Admin",
+                  action: `${action} [${target}]`
+                },
+                ...prev
+              ]);
+            }}
           />
         );
       case "rh":
@@ -3180,7 +3289,12 @@ export default function App() {
             parents={parents}
             schoolId={activeSchoolId}
             schoolName={schoolName}
+            onUpdateClass={(updatedClass) => {
+              setClasses(prev => prev.map(c => c.id === updatedClass.id ? updatedClass : c));
+            }}
             onUpdateClasses={setClasses}
+            onUpdateTeachers={setTeachers}
+            onDeleteClass={handleDeleteClass}
           />
         );
       case "options":
@@ -3222,12 +3336,25 @@ export default function App() {
           />
         );
       case "cotes":
+      case "evaluations":
         return (
-          <GradesView
-            grades={grades}
-            onAddGrade={handleAddGrade}
+          <EvaluationGradingSystem
+            userRole={userRole}
+            userName={userName}
+            userEmail={emailOrPhone}
+            currentUserId={currentUserId}
+            currentUserAccount={currentUserAccount}
             students={filteredStds}
+            teachers={teachers}
+            classes={filteredCls}
             subjects={subjects}
+            schoolId={activeSchoolId}
+            academicYear="2025-2026"
+            schoolName={activeSchool?.name || schoolName}
+            schoolLogoUrl={schoolLogoUrl}
+            isDirectionUser={isAnyAdmin || userRole.toUpperCase().includes("PRÉFET") || userRole.toUpperCase().includes("DIRECTEUR")}
+            bulletinSettings={bulletinSettings}
+            onAddNotification={(notif) => setNotifications(prev => [notif, ...prev])}
           />
         );
       case "bulletins":
@@ -3530,7 +3657,9 @@ export default function App() {
           <Messagerie
             userRole={userRole}
             userName={userName}
+            schoolId={activeSchoolId}
             employees={employees}
+            teachers={teachers}
             students={students}
             parents={parents}
             initialTargetUserId={initialTargetChatUserId}
@@ -3660,6 +3789,25 @@ export default function App() {
                 },
                 ...prev
               ]);
+            }}
+          />
+        );
+      case "promoteur_finance_center":
+        return (
+          <PromoterFinancialControlCenter
+            schoolId={activeSchool?.id || activeSchoolId || "sch-001"}
+            schoolName={activeSchool?.name || schoolName || "Complexe Scolaire SmartSchool RDC"}
+            userRole={userRole}
+            userName={userName}
+            payments={payments}
+            students={students}
+            teachers={teachers}
+            onAddPayment={handleAddPayment}
+            onUpdatePayment={(upPayment) => {
+              setPayments(prev => prev.map(p => p.id === upPayment.id ? upPayment : p));
+            }}
+            onUpdateTeacher={(upTeacher) => {
+              setTeachers(prev => prev.map(t => t.id === upTeacher.id ? upTeacher : t));
             }}
           />
         );
@@ -4065,6 +4213,15 @@ export default function App() {
 
     return (
       <NavigationProvider activeTab={activeTab} setActiveTab={setActiveTab}>
+        {showWelcome3DAnimation && (
+          <SchoolWelcome3DAnimation
+            schoolName={schoolName || activeSchool?.name || "Établissement Scolaire"}
+            userName={userName}
+            userRole={userRole}
+            schoolLogoUrl={activeSchool?.logoUrl}
+            onComplete={() => setShowWelcome3DAnimation(false)}
+          />
+        )}
         <SmartSchoolAppContent
           darkMode={darkMode}
           setDarkMode={setDarkMode}
@@ -4216,13 +4373,13 @@ export default function App() {
                         
                         {isExpanded && (
                           <div className="space-y-0.5 mt-1 pl-1">
-                            {group.items.map((item) => {
+                            {group.items.map((item, itemIdx) => {
                               const Icon = item.icon;
                               const isActive = activeTab === item.tab;
                               const badge = getBadgeForTab(item.tab);
                               return (
                                 <button
-                                  key={item.tab}
+                                  key={`${group.group}-${item.tab}-${itemIdx}`}
                                   onClick={() => {
                                     setActiveTab(item.tab);
                                     setMobileMenuOpen(false);
@@ -4321,13 +4478,13 @@ export default function App() {
           {/* Sidebar Navigation Scroll Area */}
           {sidebarCollapsed ? (
             <div className="flex-1 px-2 py-6 space-y-4 overflow-y-auto flex flex-col items-center">
-              {sidebarItems.flatMap(g => g.items).map((item) => {
+              {sidebarItems.flatMap((g, gIdx) => g.items.map((it, itIdx) => ({ ...it, _uniqueKey: `${g.group}-${it.tab}-${gIdx}-${itIdx}` }))).map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.tab;
                 const badge = getBadgeForTab(item.tab);
                 return (
                   <button
-                    key={item.tab}
+                    key={item._uniqueKey}
                     onClick={() => setActiveTab(item.tab)}
                     className={`relative p-2.5 rounded-xl transition-all cursor-pointer ${
                       isActive 
@@ -4360,13 +4517,13 @@ export default function App() {
                     
                     {isExpanded && (
                       <div className="space-y-0.5 mt-1 pl-1">
-                        {group.items.map((item) => {
+                        {group.items.map((item, itemIdx) => {
                           const Icon = item.icon;
                           const isActive = activeTab === item.tab;
                           const badge = getBadgeForTab(item.tab);
                           return (
                             <button
-                              key={item.tab}
+                              key={`${group.group}-${item.tab}-${itemIdx}`}
                               onClick={() => setActiveTab(item.tab)}
                               className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                                 isActive 
@@ -4784,19 +4941,19 @@ export default function App() {
                 subtitle={tabMeta.subtitle}
                 category={tabMeta.category}
               />
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <ErrorBoundary key={activeTab} fallbackTitle={`Module ${activeTab} - Protégé par Bouclier Anti-Crash`}>
+              <ErrorBoundary fallbackTitle={`Module ${activeTab} - Protégé par Bouclier Anti-Crash`}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                  >
                     {renderTabContent()}
-                  </ErrorBoundary>
-                </motion.div>
-              </AnimatePresence>
+                  </motion.div>
+                </AnimatePresence>
+              </ErrorBoundary>
             </div>
 
             {/* Microsoft 365 SaaS Institutional Footer */}
@@ -4921,6 +5078,9 @@ export default function App() {
           {/* LEFT COLUMN: DESKTOP BRAND PRESENTATION & STATISTICS */}
           <div className="hidden lg:flex lg:col-span-6 flex-col space-y-6 text-left">
             
+            {/* 3D HD CAMPUS HERO VISUAL */}
+            <School3DLandingHero schoolName={activeSchool?.name || schoolName} />
+
             <div className="space-y-4">
               <span className="bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue dark:text-blue-300 text-xs px-3.5 py-1.5 rounded-full font-bold uppercase tracking-wider border border-brand-blue/20 inline-block">
                 {t.badgeSovereignty}
@@ -4987,12 +5147,15 @@ export default function App() {
           <div className="lg:col-span-6 w-full max-w-md mx-auto flex flex-col items-center">
             
             {/* Mobile-only branding banner */}
-            <div className="text-center lg:hidden mb-6">
-              <span className="bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue dark:text-blue-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border border-brand-blue/20 inline-block mb-2">
-                {t.badgeSovereignty}
-              </span>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t.slogan}</h2>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">{t.developedBy}</p>
+            <div className="text-center lg:hidden mb-6 space-y-4 w-full">
+              <School3DLandingHero schoolName={activeSchool?.name || schoolName} className="mb-2" />
+              <div>
+                <span className="bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue dark:text-blue-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border border-brand-blue/20 inline-block mb-2">
+                  {t.badgeSovereignty}
+                </span>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t.slogan}</h2>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">{t.developedBy}</p>
+              </div>
             </div>
 
             {/* Outer card with border glow */}
@@ -5532,6 +5695,7 @@ export default function App() {
                                     setEmailOrPhone(activatedAcc.username);
                                     if (activatedAcc.schoolId) setActiveSchoolId(activatedAcc.schoolId);
                                     setSuccessState(true);
+                                    setShowWelcome3DAnimation(true);
                                     setActiveTab(activationResult.targetTab || "dashboard");
                                     setToast({
                                       message: `Bienvenue sur votre ${activationResult.portalConfig.portalName} !`,

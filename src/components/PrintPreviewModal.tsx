@@ -585,50 +585,183 @@ function renderRapportFinancier(data: any) {
   );
 }
 
-// 4. BULLETIN EPST
+// 4. BULLETIN SCOLAIRE OFFICIEL EPST RDC
 function renderBulletinEPST(data: any) {
   const b = data?.bulletin || data;
+  const rows = b?.rows || data?.rows || [];
+  const grandTotal = b?.grandTotal;
+  const pct = b?.percentageAnnual ?? b?.percentage ?? (data?.percentage ? Number(data.percentage) : 78.5);
+  const rank = b?.rankInClass ?? data?.rank ?? 1;
+  const totalStudents = b?.totalStudentsInClass ?? data?.totalStudents ?? 42;
+  const decision = b?.officialDecision ?? (pct >= 50 ? "Admis(e) en classe supérieure" : "Ajourné(e)");
+  const mention = b?.mention ?? (pct >= 80 ? "Grande Distinction (Élite)" : pct >= 70 ? "Distinction" : pct >= 60 ? "Satisfaction" : "Ajourné");
+
   return (
     <div className="space-y-3 text-left">
-      <div className="border p-2 bg-slate-50 rounded flex justify-between text-xs">
+      {/* Student & Academic metadata header */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-slate-50 border border-slate-300 rounded text-[9px]">
         <div>
-          <span className="text-[9px] text-slate-400 font-bold block">ÉLÈVE :</span>
-          <p className="font-bold">{data?.studentName || "Mutombo Astrid"}</p>
+          <span className="text-slate-500 font-bold block uppercase">ÉLÈVE :</span>
+          <p className="font-black text-slate-900 text-xs">{data?.studentName || b?.studentName || "Mutombo Astrid"}</p>
+          <p className="text-slate-600">Sexe: {data?.studentGender || b?.studentGender || "F"} • N° Perm: {data?.permanentId || b?.permanentId || "EPST-2026-9921"}</p>
         </div>
         <div>
-          <span className="text-[9px] text-slate-400 font-bold block">CLASSE :</span>
-          <p className="font-bold">{data?.className || "6ème Scientifique A"}</p>
+          <span className="text-slate-500 font-bold block uppercase">CLASSE & SECTION :</span>
+          <p className="font-bold text-slate-900">{data?.className || b?.className || "6ème Scientifique A"}</p>
+          <p className="text-slate-600">Option : {data?.optionName || b?.optionName || "Bio-Chimie"}</p>
         </div>
         <div>
-          <span className="text-[9px] text-slate-400 font-bold block">PÉRIODE :</span>
-          <p className="font-bold text-indigo-700">{b?.term || "1er Trimestre"}</p>
+          <span className="text-slate-500 font-bold block uppercase">ANNÉE SCOLAIRE :</span>
+          <p className="font-bold text-slate-900">{data?.academicYear || b?.academicYear || "2026-2027"}</p>
+          <p className="text-slate-600">Régime : Normal RDC</p>
+        </div>
+        <div className="text-right">
+          <span className="text-slate-500 font-bold block uppercase">RÉSULTAT GLOBAL :</span>
+          <p className="font-black text-indigo-700 text-xs">{pct}% • {rank}e / {totalStudents}</p>
+          <span className="inline-block px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded text-[8px] uppercase">
+            {decision}
+          </span>
         </div>
       </div>
 
-      <table className="w-full text-[10px] border">
-        <thead>
-          <tr className="bg-slate-900 text-white font-bold">
-            <th className="p-1.5 text-left">Branche / Matière</th>
-            <th className="p-1.5 text-center">Max</th>
-            <th className="p-1.5 text-center">Note Obtenue</th>
-            <th className="p-1.5 text-right">Appréciation</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y text-slate-800">
-          <tr><td className="p-1.5 font-bold">Mathématiques & Algèbre</td><td className="p-1.5 text-center">50</td><td className="p-1.5 text-center font-bold font-mono">42</td><td className="p-1.5 text-right text-emerald-700 font-bold">Très Bien</td></tr>
-          <tr><td className="p-1.5 font-bold">Physique Quantique</td><td className="p-1.5 text-center">50</td><td className="p-1.5 text-center font-bold font-mono">38</td><td className="p-1.5 text-right text-emerald-700 font-bold">Bien</td></tr>
-          <tr><td className="p-1.5 font-bold">Chimie Organique</td><td className="p-1.5 text-center">40</td><td className="p-1.5 text-center font-bold font-mono">35</td><td className="p-1.5 text-right text-emerald-700 font-bold">Très Bien</td></tr>
-          <tr><td className="p-1.5 font-bold">Français & Littérature</td><td className="p-1.5 text-center">40</td><td className="p-1.5 text-center font-bold font-mono">36</td><td className="p-1.5 text-right text-emerald-700 font-bold">Excellent</td></tr>
-        </tbody>
-        <tfoot>
-          <tr className="bg-slate-100 font-bold border-t border-slate-400 text-xs">
-            <td className="p-2">TOTAL GÉNÉRAL</td>
-            <td className="p-2 text-center">180</td>
-            <td className="p-2 text-center text-indigo-700 font-mono">151 (83.8%)</td>
-            <td className="p-2 text-right text-emerald-700">PASSAGE ACQUIS ✓</td>
-          </tr>
-        </tfoot>
-      </table>
+      {/* Official Grade Grid Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-[9px] border-collapse border border-slate-400">
+          <thead>
+            <tr className="bg-slate-900 text-white font-bold text-center">
+              <th rowSpan={2} className="border border-slate-400 p-1 text-left w-48">BRANCHES / MATIÈRES</th>
+              <th colSpan={4} className="border border-slate-400 p-1 bg-indigo-950">1er SEMESTRE</th>
+              <th colSpan={4} className="border border-slate-400 p-1 bg-slate-800">2ème SEMESTRE</th>
+              <th colSpan={3} className="border border-slate-400 p-1 bg-indigo-900">TOTAL GÉNÉRAL</th>
+            </tr>
+            <tr className="bg-slate-100 text-slate-900 font-bold text-center text-[8px]">
+              <th className="border border-slate-400 p-0.5 w-8">P1</th>
+              <th className="border border-slate-400 p-0.5 w-8">P2</th>
+              <th className="border border-slate-400 p-0.5 w-9">EX.1</th>
+              <th className="border border-slate-400 p-0.5 w-10 bg-indigo-50">TOT.1</th>
+              <th className="border border-slate-400 p-0.5 w-8">P3</th>
+              <th className="border border-slate-400 p-0.5 w-8">P4</th>
+              <th className="border border-slate-400 p-0.5 w-9">EX.2</th>
+              <th className="border border-slate-400 p-0.5 w-10 bg-indigo-50">TOT.2</th>
+              <th className="border border-slate-400 p-0.5 w-10">MAX</th>
+              <th className="border border-slate-400 p-0.5 w-10 font-black">OBT.</th>
+              <th className="border border-slate-400 p-0.5 w-10">%</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-300 text-slate-800">
+            {rows.length > 0 ? (
+              rows.map((r: any, idx: number) => {
+                const isFailed = r.percentageYear !== null && r.percentageYear < 50;
+                return (
+                  <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
+                    <td className="border border-slate-300 p-1 font-medium text-left">
+                      <span className="font-bold">{r.subjectName || r.name}</span>
+                      {r.category && <span className="text-[7px] text-slate-400 block">{r.category}</span>}
+                    </td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono">{r.p1?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono">{r.p2?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono">{r.exam1?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">{r.totalSem1?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono">{r.p3?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono">{r.p4?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono">{r.exam2?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">{r.totalSem2?.obtained ?? "-"}</td>
+                    <td className="border border-slate-300 p-0.5 text-center font-mono text-slate-500">{r.totalYear?.max ?? 80}</td>
+                    <td className={`border border-slate-300 p-0.5 text-center font-mono font-black ${isFailed ? "text-rose-600 bg-rose-50" : "text-slate-900"}`}>
+                      {r.totalYear?.obtained ?? "-"}
+                    </td>
+                    <td className={`border border-slate-300 p-0.5 text-center font-mono font-bold ${isFailed ? "text-rose-600 bg-rose-50" : "text-emerald-700"}`}>
+                      {r.percentageYear !== null ? `${Math.round(r.percentageYear)}%` : "-"}
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              // Default representative curriculum rows if custom array not supplied
+              <>
+                <tr>
+                  <td className="border border-slate-300 p-1 font-bold text-left">Mathématiques & Algèbre</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">16</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">18</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">34</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">68</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">17</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">19</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">36</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">72</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono text-slate-500">160</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-black">140</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold text-emerald-700">87%</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-300 p-1 font-bold text-left">Physique & Mécanique</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">15</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">16</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">30</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">61</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">16</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">17</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">32</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">65</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono text-slate-500">160</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-black">126</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold text-emerald-700">79%</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-300 p-1 font-bold text-left">Français & Littérature</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">17</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">18</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">35</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">70</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">18</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">19</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono">36</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold bg-indigo-50/50">73</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono text-slate-500">160</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-black">143</td>
+                  <td className="border border-slate-300 p-0.5 text-center font-mono font-bold text-emerald-700">89%</td>
+                </tr>
+              </>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-900 text-white font-black text-center text-[9px]">
+              <td className="border border-slate-400 p-1 text-left uppercase">TOTAL GÉNÉRAL</td>
+              <td className="border border-slate-400 p-0.5 font-mono">{grandTotal?.p1?.obtained ?? "48"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono">{grandTotal?.p2?.obtained ?? "52"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono">{grandTotal?.exam1?.obtained ?? "99"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono bg-indigo-900">{grandTotal?.sem1?.obtained ?? "199"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono">{grandTotal?.p3?.obtained ?? "51"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono">{grandTotal?.p4?.obtained ?? "55"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono">{grandTotal?.exam2?.obtained ?? "104"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono bg-indigo-900">{grandTotal?.sem2?.obtained ?? "210"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono text-slate-300">{grandTotal?.year?.max ?? "480"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono text-emerald-400">{grandTotal?.year?.obtained ?? "409"}</td>
+              <td className="border border-slate-400 p-0.5 font-mono text-amber-300">{pct}%</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* Jury deliberation & Conduct appraisal block */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2 bg-slate-50 border border-slate-300 rounded text-[8.5px]">
+        <div>
+          <span className="text-slate-500 font-bold block uppercase">POURCENTAGE GÉNÉRAL :</span>
+          <p className="font-black text-indigo-800 text-xs">{pct}%</p>
+        </div>
+        <div>
+          <span className="text-slate-500 font-bold block uppercase">RANG / PLACE :</span>
+          <p className="font-bold text-slate-900">{rank}ème sur {totalStudents} élèves</p>
+        </div>
+        <div>
+          <span className="text-slate-500 font-bold block uppercase">MENTION DU JURY :</span>
+          <p className="font-bold text-emerald-800">{mention}</p>
+        </div>
+        <div>
+          <span className="text-slate-500 font-bold block uppercase">DÉCISION FINALE :</span>
+          <p className="font-black text-indigo-700">{decision}</p>
+        </div>
+      </div>
     </div>
   );
 }

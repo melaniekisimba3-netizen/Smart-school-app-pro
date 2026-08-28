@@ -25,6 +25,7 @@ import {
   TimetableGenerationOptions, 
   TimetableGenerationReport 
 } from "../services/timetableGeneratorService";
+import { loadPersistentCollection, savePersistentCollection } from "../services/dataPersistenceService";
 
 // ---------------------------------------------------------------------------
 // DEFAULT INITIAL DATA FOR TIMETABLE & PEDAGOGY
@@ -217,11 +218,36 @@ export const PedagogicalTimetableProvider: React.FC<{ children: React.ReactNode 
 
   useEffect(() => {
     safeLocalStorage.setItem("ss_course_assignments", JSON.stringify(courseAssignments));
-  }, [courseAssignments]);
+    const schoolId = scheduleConfig.schoolId || "sch-001";
+    if (courseAssignments.length > 0) {
+      savePersistentCollection(schoolId, "course_assignments", courseAssignments).catch(() => {});
+      savePersistentCollection(schoolId, "teacherAssignments", courseAssignments).catch(() => {});
+    }
+  }, [courseAssignments, scheduleConfig.schoolId]);
 
   useEffect(() => {
     safeLocalStorage.setItem("ss_timetable_entries_v2", JSON.stringify(timetableEntries));
-  }, [timetableEntries]);
+    const schoolId = scheduleConfig.schoolId || "sch-001";
+    if (timetableEntries.length > 0) {
+      savePersistentCollection(schoolId, "timetable_entries", timetableEntries).catch(() => {});
+    }
+  }, [timetableEntries, scheduleConfig.schoolId]);
+
+  // Load persistent course assignments from database on init
+  useEffect(() => {
+    const schoolId = scheduleConfig.schoolId || "sch-001";
+    loadPersistentCollection<CourseAssignment>(schoolId, "course_assignments", []).then(loaded => {
+      if (Array.isArray(loaded) && loaded.length > 0) {
+        setCourseAssignments(loaded);
+      } else {
+        loadPersistentCollection<CourseAssignment>(schoolId, "teacherAssignments", []).then(loadedTeachers => {
+          if (Array.isArray(loadedTeachers) && loadedTeachers.length > 0) {
+            setCourseAssignments(loadedTeachers);
+          }
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, [scheduleConfig.schoolId]);
 
   useEffect(() => {
     safeLocalStorage.setItem("ss_class_journal_entries", JSON.stringify(classJournalEntries));

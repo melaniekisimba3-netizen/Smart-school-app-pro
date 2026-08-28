@@ -138,7 +138,13 @@ export function NationalUserAccountsIAMModule({
 
   // Filtered accounts
   const filteredUserAccounts = useMemo(() => {
+    const seen = new Set<string>();
     return userAccounts.filter(acc => {
+      if (!acc) return false;
+      const uniqueKey = acc.id || acc.username || `acc-${Math.random()}`;
+      if (seen.has(uniqueKey)) return false;
+      seen.add(uniqueKey);
+
       // Tenant Isolation
       if (!isOwner && activeSchoolId && activeSchoolId !== "default") {
         if (acc.schoolId && acc.schoolId !== activeSchoolId) return false;
@@ -619,7 +625,7 @@ export function NationalUserAccountsIAMModule({
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {unprovisionedPeople.map((person) => {
+              {unprovisionedPeople.map((person, idx) => {
                 const badgeColor = person.category === "student"
                   ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200"
                   : person.category === "parent"
@@ -627,7 +633,7 @@ export function NationalUserAccountsIAMModule({
                   : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border-amber-200";
 
                 return (
-                  <div key={person.id} className="p-4 hover:bg-slate-50/80 dark:hover:bg-slate-950/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div key={`${person.id}-${idx}`} className="p-4 hover:bg-slate-50/80 dark:hover:bg-slate-950/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-start gap-3">
                       <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-700 dark:text-slate-300 font-bold text-sm">
                         {person.fullName ? person.fullName.substring(0, 2).toUpperCase() : "DP"}
@@ -691,11 +697,11 @@ export function NationalUserAccountsIAMModule({
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredUserAccounts.map(acc => {
+              {filteredUserAccounts.map((acc, accIdx) => {
                 const isAccActive = acc.isActive && !acc.isSuspended && !acc.isLocked;
 
                 return (
-                  <div key={acc.id} className="p-4 hover:bg-slate-50/80 dark:hover:bg-slate-950/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div key={`${acc.id || 'acc'}-${accIdx}`} className="p-4 hover:bg-slate-50/80 dark:hover:bg-slate-950/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
                     {/* User Info */}
                     <div className="flex items-start gap-3">
                       <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-700 dark:text-slate-300 font-bold text-sm">

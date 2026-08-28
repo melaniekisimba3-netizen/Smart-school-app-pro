@@ -1,4 +1,5 @@
 import { Student, Teacher, Parent, ClassRoom, Option, Subject, Grade, Attendance, Payment, TimetableEntry, NotificationItem } from "./types";
+import { getOfficialRDCSubjects } from "./data/nationalCurriculumModels";
 
 export const initialOptions: Option[] = [
   { id: "opt-1", name: "Mathématiques-Physique", code: "MP", desc: "Option Sciences avec forte concentration en Mathématiques, Physique et Chimie (Scientifique).", isActivated: true },
@@ -19,7 +20,7 @@ export const initialOptions: Option[] = [
 
 export const initialClasses: ClassRoom[] = [];
 
-export const initialSubjects: Subject[] = [];
+export const initialSubjects: Subject[] = getOfficialRDCSubjects("sch-001");
 
 export const initialStudents: Student[] = [];
 

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "emp-1787292545405",
+    "matricule": "PERS-2026-0002",
+    "photoUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150",
+    "firstName": "Timothée",
+    "lastName": "shili",
+    "gender": "M",
+    "birthDate": "1988-05-12",
+    "phone": "+243 853717400",
+    "email": "melaniekalonda37@gmail.com",
+    "function": "Préfet des Études",
+    "department": "Pédagogie & Études",
+    "hireDate": "2026-08-21",
+    "status": "Actif",
+    "hasUserAccount": true,
+    "userAccountRole": "Préfet des Études",
+    "schoolId": "sch-141992",
+    "salaryBase": 350,
+    "contractType": "CDI",
+    "nationality": "Congolaise",
+    "address": "",
+    "birthPlace": "",
+    "civilStatus": "Célibataire",
+    "service": "Pédagogie & Études",
+    "diplomas": [],
+    "experience": [],
+    "documents": [],
+    "emergencyContact": {
+      "name": "Timothée shili",
+      "relationship": "Titulaire",
+      "phone": "+243 853717400"
+    },
+    "qrCodeData": "https://smartschool.cd/verify/PERS-2026-0002",
+    "activationCode": "ACT-PERS-SHILI-862",
+    "idSsrdc": "SSRDC-PE-16761"
+  },
+  {
+    "id": "emp-49700",
+    "matricule": "MAT-992-001",
+    "photoUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150",
+    "firstName": "Serges",
+    "lastName": "kabengele",
+    "gender": "M",
+    "birthDate": "1985-01-01",
+    "phone": "+243 998222525",
+    "email": "melaniekalonda37@gmail.com",
+    "function": "Promoteur",
+    "department": "Direction & Administration",
+    "hireDate": "2026-08-21",
+    "status": "Actif",
+    "hasUserAccount": true,
+    "userAccountId": "acc-sch-141992-admin",
+    "userAccountRole": "Promoteur",
+    "schoolId": "sch-141992",
+    "salaryBase": 500,
+    "contractType": "CDI",
+    "nationality": "Congolaise",
+    "address": "Annexe , Lubumbashi ",
+    "birthPlace": "Lubumbashi ",
+    "civilStatus": "Marié(e)",
+    "service": "Direction Générale",
+    "diplomas": [
+      "Diplôme d'État / Licence"
+    ],
+    "experience": [
+      "Expérience de gestion"
+    ],
+    "documents": [],
+    "emergencyContact": {
+      "name": "Serges kabengele",
+      "relationship": "Titulaire",
+      "phone": "+243 998222525"
+    },
+    "qrCodeData": "STAFF-emp-49700"
+  }
+]

@@ -111,6 +111,70 @@
       },
       "required": ["id", "schoolId", "studentId"]
     },
+    "Subject": {
+      "title": "National & Institutional Subject",
+      "description": "Official RDC educational subject and weighting specification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "category": { "type": "string" },
+        "educationLevel": { "type": "string" },
+        "cycle": { "type": "string" },
+        "section": { "type": "string" },
+        "option": { "type": "string" },
+        "optionName": { "type": "string" },
+        "hoursPerWeek": { "type": "number" },
+        "coefficient": { "type": "number" },
+        "maxPointsInterro": { "type": "number" },
+        "maxPointsExamen": { "type": "number" },
+        "isCommon": { "type": "boolean" },
+        "isOptional": { "type": "boolean" },
+        "isOfficialRDC": { "type": "boolean" }
+      },
+      "required": ["id", "schoolId", "name", "category"]
+    },
+    "TeacherAssignment": {
+      "title": "Teacher Course & Class Assignment",
+      "description": "Pedagogical assignment mapping teacher, class, and subject",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "classId": { "type": "string" },
+        "className": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "hoursPerWeek": { "type": "number" },
+        "isClassMaster": { "type": "boolean" }
+      },
+      "required": ["id", "schoolId", "teacherId", "className", "subjectName"]
+    },
+    "EvaluationRecord": {
+      "title": "Pedagogical Evaluation",
+      "description": "Scheduled exam, test, or assessment with official status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "classId": { "type": "string" },
+        "className": { "type": "string" },
+        "period": { "type": "string" },
+        "maxScore": { "type": "number" },
+        "status": { "type": "string" },
+        "teacherId": { "type": "string" }
+      },
+      "required": ["id", "schoolId", "title", "subjectName", "className", "maxScore"]
+    },
     "AuditLog": {
       "title": "Security Audit Log",
       "description": "Immutable security event and threat audit log",
@@ -159,6 +223,18 @@
     "/academic_records/{recordId}": {
       "schema": "#/entities/AcademicRecord",
       "description": "Student grade and academic report records"
+    },
+    "/subjects/{subjectId}": {
+      "schema": "#/entities/Subject",
+      "description": "Official RDC and institutional curriculum subjects"
+    },
+    "/teacherAssignments/{assignmentId}": {
+      "schema": "#/entities/TeacherAssignment",
+      "description": "Teacher course assignments and titularizations"
+    },
+    "/evaluations/{evaluationId}": {
+      "schema": "#/entities/EvaluationRecord",
+      "description": "Pedagogical evaluations and assessments"
     },
     "/audit_logs/{logId}": {
       "schema": "#/entities/AuditLog",

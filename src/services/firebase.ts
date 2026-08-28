@@ -13,18 +13,23 @@ import {
   doc, 
   setDoc, 
   getDocs, 
-  serverTimestamp
+  serverTimestamp,
+  onSnapshot,
+  query,
+  where,
+  deleteDoc
 } from "firebase/firestore";
+import appletConfig from "../../firebase-applet-config.json";
 
 const metaEnv = ((import.meta as unknown) as { env?: Record<string, string> }).env || {};
 
 const firebaseConfig = {
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || "",
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: metaEnv.VITE_FIREBASE_APP_ID || ""
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || appletConfig.apiKey || "",
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || "",
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || "",
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || "",
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || "",
+  appId: metaEnv.VITE_FIREBASE_APP_ID || appletConfig.appId || ""
 };
 
 export const isFirebaseConfigured = Boolean(
@@ -39,7 +44,8 @@ export const app = isFirebaseConfigured
   : null;
 
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+export const firestoreDatabaseId = appletConfig.firestoreDatabaseId || "(default)";
+export const db = app ? (firestoreDatabaseId && firestoreDatabaseId !== "(default)" ? getFirestore(app, firestoreDatabaseId) : getFirestore(app)) : null;
 
 // Firebase Authentication Helpers
 export async function loginWithFirebase(email: string, pass: string): Promise<{ success: boolean; user?: FirebaseUser; error?: string }> {

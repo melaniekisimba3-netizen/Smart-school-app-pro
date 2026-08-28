@@ -1,0 +1,23 @@
+{
+  "snapshotId": "snapshot-2026-08-28T11-03-51-438Z-1552",
+  "timestamp": "2026-08-28T11:03:51.438Z",
+  "reason": "Auto-backup avant restauration de snapshot-2026-08-28T10-24-32-001Z-8790",
+  "sourceVersion": "2026.3.0-PROD",
+  "schemaVersion": "2026.3.0",
+  "schools": [
+    {
+      "schoolId": "global",
+      "collections": []
+    },
+    {
+      "schoolId": "sch-001",
+      "collections": []
+    },
+    {
+      "schoolId": "sch-141992",
+      "collections": [
+        "employees.json"
+      ]
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import { createServer as createViteServer } from "vite";
 import { mobileMoneyRouter } from "./server/mobileMoneyEngine";
 import { processAnalystQuery } from "./server/aiAnalystEngine";
 import { dataRouter } from "./server/dataStoreEngine";
+import { systemUpdateRouter } from "./server/systemUpdateEngine";
+import { financialAuditRouter } from "./server/financialAuditEngine";
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -205,6 +207,12 @@ app.use("/api/payments/momo", mobileMoneyRouter);
 
 // Persistent Multi-Tenant Data Store API Routes
 app.use("/api/data", dataRouter);
+
+// System SaaS Update, Schema Migration & Automated Zero-Data-Loss Backup Routes
+app.use("/api/system", systemUpdateRouter);
+
+// Financial Surveillance, Immutable Audit Trail & Anti-Fraud Engine Routes
+app.use("/api/finance", financialAuditRouter);
 
 // Server-side Payment Verification & Commission Calculation API
 app.post("/api/payments/verify", (req, res) => {

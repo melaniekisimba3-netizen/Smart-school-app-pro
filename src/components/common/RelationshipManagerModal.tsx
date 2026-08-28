@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ClassRoom, 
   Student, 
@@ -55,6 +55,7 @@ export interface RelationshipManagerModalProps {
   onUpdateClass?: (updatedClass: ClassRoom) => void;
   onUpdateStudent?: (updatedStudent: Student) => void;
   onUpdateParent?: (updatedParent: Parent) => void;
+  onUpdateTeachers?: React.Dispatch<React.SetStateAction<Teacher[]>>;
   onRefreshAll?: () => void;
   actorName?: string;
   actorRole?: string;
@@ -80,6 +81,7 @@ export function RelationshipManagerModal({
   onUpdateClass,
   onUpdateStudent,
   onUpdateParent,
+  onUpdateTeachers,
   onRefreshAll,
   actorName = "Direction",
   actorRole = "Administrateur"
@@ -104,6 +106,21 @@ export function RelationshipManagerModal({
     return targetClass?.responsibleStaffId || "";
   });
   const [respNote, setRespNote] = useState("");
+
+  // Sync selected titular and responsible when targetClass or data changes
+  useEffect(() => {
+    if (targetClass) {
+      const resolved = resolveClassTitulaire(targetClass, teachers, employees, userAccounts);
+      if (resolved.id) {
+        setSelectedTitularId(resolved.id);
+      } else if (targetClass.classTeacherId) {
+        setSelectedTitularId(targetClass.classTeacherId);
+      } else {
+        setSelectedTitularId("");
+      }
+      setSelectedRespId(targetClass.responsibleStaffId || "");
+    }
+  }, [targetClass, teachers, employees, userAccounts]);
 
   // Local state for Student parent linkage
   const [selectedParentIdToLink, setSelectedParentIdToLink] = useState("");
@@ -160,6 +177,24 @@ export function RelationshipManagerModal({
       actorName,
       titularNote || "Nouvelle affectation officielle"
     );
+
+    // If titulaire is a teacher, sync into teacher's assignedClasses
+    if (found.type === "teacher" && onUpdateTeachers) {
+      const classNameLabel = updated.name || `${updated.classGrade || updated.level} ${updated.roomLetter}`.trim();
+      onUpdateTeachers(prev => prev.map(t => {
+        if (t.id === found.id) {
+          const currentAssigned = t.assignedClasses || [];
+          if (!currentAssigned.includes(classNameLabel)) {
+            return {
+              ...t,
+              assignedClasses: [...currentAssigned, classNameLabel],
+              assignedClassIds: [...((t as any).assignedClassIds || []), updated.id]
+            };
+          }
+        }
+        return t;
+      }));
+    }
 
     onUpdateClass(updated);
     showFeedback(`Titulaire de la classe affecté : ${found.name}`);

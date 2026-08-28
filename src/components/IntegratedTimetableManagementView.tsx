@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Calendar, 
@@ -122,8 +122,14 @@ export const IntegratedTimetableManagementView: React.FC<IntegratedTimetableProp
   }, [classes, userScope]);
 
   const [selectedClass, setSelectedClass] = useState<string>(() => {
-    return availableClasses[0] ? `${availableClasses[0].level} ${availableClasses[0].roomLetter}` : "6ème Primaire A";
+    return availableClasses[0] ? (availableClasses[0].name || `${availableClasses[0].level} ${availableClasses[0].roomLetter}`.trim()) : "";
   });
+
+  useEffect(() => {
+    if (availableClasses.length > 0 && (!selectedClass || !availableClasses.some(c => (c.name === selectedClass || `${c.level} ${c.roomLetter}`.trim() === selectedClass)))) {
+      setSelectedClass(availableClasses[0].name || `${availableClasses[0].level} ${availableClasses[0].roomLetter}`.trim());
+    }
+  }, [availableClasses]);
 
   const [selectedTeacher, setSelectedTeacher] = useState<string>(() => {
     return teachers[0] ? getTeacherDisplayName(teachers[0]) : "Jean Mukendi";

@@ -11,6 +11,7 @@ import { School as SchoolType } from "../types";
 import { SaasCenterModule } from "./SaasCenterModule";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { NationalIdentitySettingsComponent } from "./NationalIdentitySettingsComponent";
+import { SchoolUpdateCenter } from "./SchoolUpdateCenter";
 import { safeLocalStorage } from "../utils/safeStorage";
 import { SmartSchoolLogo } from "./SmartSchoolLogo";
 
@@ -2034,6 +2035,14 @@ export function SuperAdminPlatform({
       {/* MODULE 8: SYSTEM SETTINGS & NATIONAL IDENTITY */}
       {activeTab === "sa_settings" && (
         <div className="space-y-8">
+          {/* CENTRE UNIFIÉ DE MISE À JOUR SAAS & PROTECTION ZERO-DATA-LOSS */}
+          <SchoolUpdateCenter
+            schoolName="Plateforme Nationale SmartSchool RDC"
+            userRole={userRole}
+            userName={userName}
+            activeSchoolId="global"
+          />
+
           {/* IDENTITÉ NATIONALE & RESSOURCES OFFICIELLES (SECTION PROPRIÉTAIRE) */}
           <NationalIdentitySettingsComponent
             currentUserRole={userRole}

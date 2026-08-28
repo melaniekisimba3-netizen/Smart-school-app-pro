@@ -16,6 +16,7 @@ import { PrintPreviewModal, PrintableDocumentType } from "./PrintPreviewModal";
 import { MobileMoneyAuditDashboard } from "./MobileMoneyAuditDashboard";
 import { MobileMoneyPaymentModal } from "./MobileMoneyPaymentModal";
 import { safeLocalStorage } from "../utils/safeStorage";
+import { recordFinancialAudit } from "../services/financialAuditService";
 
 // ---------------------------------------------------------------------------
 // OFFICIAL RDC PDF RECEIPT GENERATOR FUNCTION WITH WATERMARK & QR CODE
@@ -758,6 +759,26 @@ export function FinanceModule({
     // Submit payment
     onAddPayment(newPayment);
 
+    // Record immutable audit trace on server ledger
+    recordFinancialAudit({
+      schoolId: schoolDetails?.id || "sch-001",
+      schoolName: schoolName || "Complexe Scolaire",
+      operatorId: `USR-${userName.replace(/\s+/g, "_")}`,
+      operatorName: userName,
+      operatorRole: userRole,
+      actionType: isMomo ? "ENCAISSEMENT_MOMO" : "ENCAISSEMENT_ESPECES",
+      studentId: selectedStudent.id,
+      studentName: `${selectedStudent.firstName} ${selectedStudent.lastName}`,
+      studentClass: selectedStudent.className,
+      amount: payAmount,
+      currency: payCurrency,
+      paymentMethod: isMomo ? (payMomoProvider || "Mobile Money") : payMethod,
+      transactionReference: refStr,
+      newStatus: "Succès",
+      promoterNotified: true,
+      justification: `Perception ${payMotif} (${payMonth})`
+    }).catch(err => console.warn("Audit record failed:", err));
+
     // Keep locally in audit logs
     const newLog: FinanceAuditLog = {
       id: `log-${Date.now()}`,
@@ -864,6 +885,26 @@ export function FinanceModule({
     };
 
     onAddPayment(newPayment);
+
+    // Record immutable audit trace on server ledger
+    recordFinancialAudit({
+      schoolId: schoolDetails?.id || "sch-001",
+      schoolName: schoolName || "Complexe Scolaire",
+      operatorId: `USR-${userName.replace(/\s+/g, "_")}`,
+      operatorName: userName,
+      operatorRole: userRole,
+      actionType: "ENCAISSEMENT_ESPECES",
+      studentId: st.id,
+      studentName: `${st.firstName} ${st.lastName}`,
+      studentClass: st.className,
+      amount: calculatedTotalUSD,
+      currency: "USD",
+      paymentMethod: onSiteMode,
+      transactionReference: refStr,
+      newStatus: "Succès",
+      promoterNotified: true,
+      justification: `Paiement sur place - ${feeTypeLabel}`
+    }).catch(err => console.warn("Audit record failed:", err));
 
     // Add to audit logs
     const newLog: FinanceAuditLog = {

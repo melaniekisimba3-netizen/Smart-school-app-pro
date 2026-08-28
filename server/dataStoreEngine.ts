@@ -48,15 +48,28 @@ dataRouter.get("/:schoolId/:collection", (req, res) => {
 /**
  * POST /api/data/:schoolId/:collection
  * Overwrite / Save entire records array for a tenant collection
+ * Protected by Zero-Data-Loss: Prevents wiping non-empty files with empty arrays unless explicitly confirmed
  */
 dataRouter.post("/:schoolId/:collection", (req, res) => {
   try {
     const { schoolId, collection } = req.params;
-    const { data } = req.body;
+    const { data, allowEmptyOverride } = req.body;
     if (!Array.isArray(data)) {
       return res.status(400).json({ success: false, error: "data must be an array" });
     }
     const filePath = getCollectionFilePath(schoolId, collection);
+
+    // Zero-Data-Loss Guard: if data is empty and not explicitly allowed, preserve existing populated store
+    if (data.length === 0 && !allowEmptyOverride && fs.existsSync(filePath)) {
+      try {
+        const existing = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        if (Array.isArray(existing) && existing.length > 0) {
+          console.warn(`[Zero-Data-Loss Protection] Preserved existing ${existing.length} records in ${schoolId}/${collection}.json against empty payload.`);
+          return res.json({ success: true, count: existing.length, preservedAgainstEmptyOverwrite: true });
+        }
+      } catch (e) {}
+    }
+
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
     return res.json({ success: true, count: data.length });
   } catch (err: any) {

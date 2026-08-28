@@ -148,11 +148,62 @@ export interface ClassAnnouncement {
   time: string;
 }
 
+export interface TeacherPayoutDetails {
+  paymentMethod: "M-Pesa" | "Orange Money" | "Airtel Money" | "Afrimoney" | "Virement Bancaire" | "Espèces";
+  receivingNumberOrIban: string; // Numéro Mobile Money (ex: 0812345678) ou Numéro de compte bancaire
+  accountHolderName: string; // Nom officiel tel qu'enregistré auprès de l'opérateur/banque
+  bankName?: string; // e.g. Rawbank, EquityBCDC, TMB, etc.
+  preferredCurrency: "USD" | "CDF";
+  lastUpdatedByTeacherAt?: string;
+  isVerifiedByTeacher: boolean;
+  notes?: string;
+}
+
+export interface TeacherSalaryPayment {
+  id: string;
+  schoolId: string;
+  schoolName?: string;
+  teacherId: string;
+  teacherName: string;
+  teacherMatricule?: string;
+  teacherPhone?: string;
+  periodMonth?: string; // e.g. "Septembre 2026"
+  period?: string; // Alias for periodMonth
+  academicYear?: string; // e.g. "2026-2027"
+  baseSalary?: number;
+  baseAmount?: number; // Alias for baseSalary
+  primesAndBonus?: number;
+  bonusAmount?: number; // Alias for primesAndBonus
+  deductions?: number;
+  deductionsAmount?: number; // Alias for deductions
+  netAmountPaid: number;
+  currency: "USD" | "CDF";
+  paymentMethod: "M-Pesa" | "Orange Money" | "Airtel Money" | "Afrimoney" | "Virement Bancaire" | "Espèces" | string;
+  receivingNumberOrIban: string;
+  accountHolderName: string;
+  bankName?: string;
+  transactionReference: string; // e.g. "SAL-202609-MOMO-84920"
+  externalPaymentRef?: string;
+  status: "Validé & Payé" | "En attente d'exécution" | "Rejeté" | "Annulé" | "EFFECTUE";
+  authorizedByPromoterId?: string;
+  authorizedByPromoterName?: string;
+  authorizedAt?: string;
+  paymentDate?: string; // Alias for authorizedAt
+  auditLogId?: string;
+  receiptSlipNumber?: string; // e.g. "BP-2026-09-0012"
+  slipNumber?: string; // Alias for receiptSlipNumber
+  notes?: string;
+  createdAt?: string;
+}
+
 export interface Teacher {
   id: string;
   firstName: string;
   lastName: string;
+  postName?: string;
   name?: string;
+  gender?: "M" | "F";
+  birthDate?: string;
   qualification?: string;
   function?: string;
   department?: string;
@@ -162,10 +213,26 @@ export interface Teacher {
   matriculeEtat?: string;
   specialty: string;
   speciality?: string;
+  subject?: string;
   assignedClasses: string[];
+  assignedSubjects?: string[];
   weeklyHours: number;
   salaryBase: number;
+  salaryCurrency?: "USD" | "CDF";
+  payoutDetails?: TeacherPayoutDetails;
   schoolId?: string;
+  photoUrl?: string;
+  // Account details
+  hasUserAccount?: boolean;
+  accountCreated?: boolean;
+  userAccountId?: string;
+  userAccountRole?: string;
+  accountStatus?: "unprovisioned" | "pending_activation" | "active" | "suspended" | "locked";
+  username?: string;
+  tempPassword?: string;
+  activationCode?: string;
+  portalAccess?: boolean;
+  activationDate?: string;
 }
 
 export interface Parent {
@@ -286,6 +353,8 @@ export interface NationalIdentityAuditLog {
   details: string;
 }
 
+export type EducationLevel = "maternelle" | "primaire" | "secondaire" | "humanites" | "Tous";
+
 export interface Subject {
   id: string;
   name: string;
@@ -293,11 +362,14 @@ export interface Subject {
   maxPointsInterro: number;
   maxPointsExamen: number;
   hoursPerWeek: number;
-  // Extended fields for RDC curriculum & pedagogical options
+  // Extended fields for RDC official curriculum & pedagogical options
   schoolId?: string;
   schoolYear?: string;
+  educationLevel?: "maternelle" | "primaire" | "secondaire" | "humanites" | "Tous" | string;
   cycle?: "Maternelle" | "Primaire" | "Secondaire" | "Tous";
   levelCategory?: "Maternelle" | "Primaire" | "Secondaire";
+  section?: string; // ex: "Générale", "Scientifique", "Commerciale", "Pédagogique", "Technique"
+  option?: string; // ex: "Bio-Chimie", "Math-Physique", "Gestion", "Didactique"
   level?: string; // ex: "7ème EB", "8ème EB", "1ère Humanités", "6ème Primaire", "Toutes"
   className?: string; // specific class if assigned
   optionId?: string;
@@ -307,6 +379,94 @@ export interface Subject {
   isOptional?: boolean; // false = Obligatoire, true = Optionnel
   code?: string;
   description?: string;
+  isOfficialRDC?: boolean; // true for National Curriculum of DRC
+}
+
+export type EvaluationType = 
+  | "Interrogation" 
+  | "Interrogation Écrite" 
+  | "Interrogation Orale" 
+  | "Exercice" 
+  | "Devoir à Domicile" 
+  | "Contrôle" 
+  | "Travail Pratique (TP)" 
+  | "Examen Semestriel" 
+  | "Composition" 
+  | "Autre";
+
+export type EvaluationStatus = "draft" | "submitted" | "validated" | "published";
+
+export interface Evaluation {
+  id: string;
+  title: string;
+  type: EvaluationType | string;
+  subjectId: string;
+  subjectName: string;
+  classId: string;
+  className: string;
+  optionId?: string;
+  optionName?: string;
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:mm
+  durationMinutes?: number;
+  period: "P1" | "P2" | "EXAM1" | "P3" | "P4" | "EXAM2" | string;
+  maxScore: number;
+  coefficient: number;
+  description?: string;
+  instructions?: string;
+  status: EvaluationStatus;
+  isScheduled?: boolean;
+  scheduledDate?: string;
+  teacherId: string;
+  teacherName: string;
+  schoolId: string;
+  academicYear: string;
+  createdAt: string;
+  updatedAt?: string;
+  validatedAt?: string;
+  validatedBy?: string;
+  publishedAt?: string;
+}
+
+export interface EvaluationScore {
+  id: string;
+  evaluationId: string;
+  studentId: string;
+  studentName: string;
+  registrationNumber?: string;
+  scoreObtained: number | null; // null if absent
+  isAbsent?: boolean;
+  isJustified?: boolean;
+  isDispensed?: boolean;
+  comments?: string;
+  status: EvaluationStatus;
+  recordedBy: string;
+  recordedAt: string;
+  schoolId: string;
+  classId: string;
+  className: string;
+  subjectId: string;
+  subjectName: string;
+  period: string;
+}
+
+export interface EvaluationAuditLog {
+  id: string;
+  evaluationId: string;
+  evaluationTitle: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  subjectName: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  oldScore: number | string | null;
+  newScore: number | string | null;
+  reason?: string;
+  timestamp: string;
+  date: string;
+  time: string;
 }
 
 export interface Grade {
@@ -315,12 +475,25 @@ export interface Grade {
   studentName: string;
   subjectId: string;
   subjectName: string;
-  period: "P1" | "P2" | "EXAM1" | "P3" | "P4" | "EXAM2";
+  period: "P1" | "P2" | "EXAM1" | "P3" | "P4" | "EXAM2" | string;
   scoreObtained: number;
   maxScore: number;
   recordedBy: string;
   recordedDate: string;
   schoolId?: string;
+  classId?: string;
+  className?: string;
+  academicYear?: string;
+  teacherId?: string;
+  teacherName?: string;
+  status?: "draft" | "submitted" | "validated" | "published" | "rejected";
+  validationDate?: string;
+  validatedBy?: string;
+  comments?: string;
+  evaluationType?: "Interrogation" | "Devoir" | "Examen" | "Travail Pratique" | string;
+  evaluationId?: string;
+  term?: string;
+  termName?: string;
 }
 
 export interface Attendance {
@@ -328,12 +501,27 @@ export interface Attendance {
   studentId: string;
   studentName: string;
   className: string;
+  classId?: string;
   date: string;
-  status: "Présent" | "Absent" | "En retard";
+  time?: string;
+  status: "Présent" | "Absent" | "En retard" | "Retard" | "Absent Justifié" | string;
   isJustified: boolean;
   reason?: string;
-  recordedBy: string;
+  recordedBy?: string;
   schoolId?: string;
+  academicYear?: string;
+  teacherId?: string;
+  teacherName?: string;
+}
+
+export interface SchoolBulletinPermissions {
+  allowTeacherDownload: boolean;
+  allowTeacherPrint: boolean;
+  publishToStudents: boolean;
+  publishToParents: boolean;
+  requireDirectionValidation: boolean;
+  lastUpdated?: string;
+  updatedBy?: string;
 }
 
 export interface CustomFeeType {
@@ -413,6 +601,17 @@ export interface Payment {
   isValidated: boolean;
   createdAt: string;
 
+  // Anti-fraud, void and refund control
+  cancellationReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  refundReason?: string;
+  refundedBy?: string;
+  refundedAt?: string;
+  refundAmount?: number;
+  auditHash?: string;
+  isFlaggedForAudit?: boolean;
+
   // Unified On-Site Payment & On-Site Commission Settlement fields
   isOnSitePayment?: boolean;
   onSitePaymentMode?: "Espèces" | "M-Pesa (effectué à l'école)" | "Orange Money (effectué à l'école)" | "Airtel Money (effectué à l'école)" | "Afrimoney (effectué à l'école)" | "Banque" | "Chèque" | "Autre" | string;
@@ -428,6 +627,75 @@ export interface Payment {
   platformCommissionUSD?: number;
   schoolShareUSD?: number;
   receiptNumber?: string;
+}
+
+export interface FinancialAuditTrailEntry {
+  id: string;
+  schoolId: string;
+  schoolName?: string;
+  timestamp: string;
+  operatorId: string;
+  operatorName: string;
+  operatorRole: string;
+  actionType:
+    | "ENCAISSEMENT_ESPECES"
+    | "ENCAISSEMENT_MOMO"
+    | "VALIDATION_TRANSACTION"
+    | "DEMANDE_ANNULATION"
+    | "ANNULATION_EFFECTUEE"
+    | "REMBOURSEMENT_EFFECTUE"
+    | "MODIFICATION_FRAIS"
+    | "MODIFICATION_COMPTE_RECEPTION"
+    | "PAIEMENT_SALAIRE_ENSEIGNANT"
+    | "MODIFICATION_COORDONNEES_PAIE"
+    | "TENTATIVE_ACCES_NON_AUTORISE"
+    | "GENERATION_RECU"
+    | "CLOTURE_CAISSE_JOURNALIERE";
+  studentId?: string;
+  studentName?: string;
+  studentClass?: string;
+  amount?: number;
+  currency?: "USD" | "CDF";
+  paymentMethod?: string;
+  mobileOperator?: string;
+  transactionReference?: string;
+  receiptNumber?: string;
+  previousStatus?: string;
+  newStatus?: string;
+  justification?: string;
+  promoterNotified?: boolean;
+  integrityHash: string; // Cryptographic chain hash
+  ipAddress?: string;
+  deviceInfo?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface FinancialSecurityAlert {
+  id: string;
+  schoolId: string;
+  schoolName?: string;
+  title: string;
+  severity: "INFO" | "ATTENTION" | "CRITIQUE_FRAUDE";
+  category:
+    | "ANNULATION_TRANSACTION"
+    | "REMBOURSEMENT_SENSIBLE"
+    | "TENTATIVE_MODIF_COMPTE_MOMO"
+    | "MONTANT_ANORMAL_ENCAISSE"
+    | "CUMUL_ESPECES_NON_VERSE"
+    | "TENTATIVE_SUPPRESSION_TRACE"
+    | "HORAIRE_INSOLITE";
+  message: string;
+  timestamp: string;
+  targetOperator: string;
+  operatorRole: string;
+  studentName?: string;
+  amountInvolved?: number;
+  currency?: "USD" | "CDF";
+  reference?: string;
+  status: "ACTIVE" | "EN_REVUE" | "JUSTIFIEE_PROMOTEUR" | "BLOQUEE";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  promoterComment?: string;
 }
 
 export interface DeveloperMobileMoneyAccount {
@@ -653,11 +921,16 @@ export interface CourseAssignment {
   optionName?: string;
   schoolYear: string;
   weeklyHours: number;
+  hoursPerWeek?: number;
   assignedBy: string;
   assignedByRole: string;
   assignedDate: string;
   schoolId?: string;
+  isClassMaster?: boolean; // Titulaire officiel de la classe
+  createdAt?: string;
 }
+
+export type TeacherAssignment = CourseAssignment;
 
 export interface SchoolRoom {
   id: string;
@@ -985,6 +1258,8 @@ export interface Employee {
   hireDate: string;
   contractType: "CDI" | "CDD" | "Stage" | "Prestation";
   salaryBase: number;
+  salaryCurrency?: "USD" | "CDF";
+  payoutDetails?: TeacherPayoutDetails;
   diplomas: string[];
   experience: string[];
   documents: EmployeeDocument[];

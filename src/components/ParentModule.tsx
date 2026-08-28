@@ -34,15 +34,24 @@ import { MobileMoneyPaymentModal } from "./MobileMoneyPaymentModal";
 import { usePedagogicalTimetable } from "../context/PedagogicalTimetableContext";
 import { useSmartSchoolCore } from "../context/SmartSchoolCoreContext";
 import { getStoredProfilePhoto } from "../services/userPhotoService";
+import { getStoredEvaluations, getStoredEvaluationScores } from "../services/evaluationService";
+import { calculateOfficialStudentBulletin } from "../services/officialBulletinService";
+import { Teacher, Student, Parent, Payment, Grade, Attendance, ClassRoom, Subject, SchoolBulletinPermissions } from "../types";
 
 interface ParentModuleProps {
   userRole: string;
   userName: string;
   userEmail?: string;
   currentUserId?: string;
-  students?: any[];
-  parents?: any[];
-  payments?: any[];
+  students?: Student[];
+  parents?: Parent[];
+  teachers?: Teacher[];
+  classes?: ClassRoom[];
+  subjects?: Subject[];
+  payments?: Payment[];
+  grades?: Grade[];
+  attendances?: Attendance[];
+  bulletinSettings?: SchoolBulletinPermissions;
   onAddPayment?: (payment: any) => void;
   onNavigateToMessagerie?: (targetUserId?: string) => void;
 }
@@ -54,7 +63,13 @@ export function ParentModule({
   currentUserId,
   students = [], 
   parents = [], 
+  teachers = [],
+  classes = [],
+  subjects = [],
   payments = [], 
+  grades = [],
+  attendances = [],
+  bulletinSettings,
   onAddPayment, 
   onNavigateToMessagerie 
 }: ParentModuleProps) {
@@ -140,64 +155,42 @@ export function ParentModule({
       return matchedStudents.map((s, idx) => {
         const schId = s.schoolId || "sch-141992";
         const customPhoto = getStoredProfilePhoto(schId, s.id) || getStoredProfilePhoto(schId, s.registrationNumber);
+        
+        // Dynamic absences calculation for this child
+        const childAtts = attendances.filter(a => (a.studentId === s.id || a.studentId === s.registrationNumber) && a.status !== "Présent");
+        
+        // Dynamic average calculation for this child
+        const childGrds = grades.filter(g => g.studentId === s.id || g.studentId === s.registrationNumber);
+        let averageStr = "Non noté";
+        if (childGrds.length > 0) {
+          const totalScore = childGrds.reduce((sum, g) => sum + g.scoreObtained, 0);
+          const totalMax = childGrds.reduce((sum, g) => sum + g.maxScore, 0);
+          if (totalMax > 0) {
+            averageStr = `${((totalScore / totalMax) * 100).toFixed(1)}%`;
+          }
+        }
+
         return {
           id: s.id,
           rawStudent: s,
           schoolId: schId,
-          schoolName: s.schoolName || printConfig?.schoolName || "Complexe Scolaire SmartSchool RDC",
+          schoolName: (s as any).schoolName || printConfig?.schoolName || "Complexe Scolaire SmartSchool RDC",
           name: `${s.lastName} ${s.firstName}`,
-          class: s.className || "6ème Primaire",
+          class: s.className || "Classe non assignée",
           option: s.optionName || "Tronc Commun",
           matricule: s.registrationNumber || s.id || `ELE-${idx + 1}`,
-          photoUrl: customPhoto || (s as any).photoUrl || (s.gender === "F" ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop" : "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&h=150&fit=crop"),
-          absences: idx === 0 ? 1 : 0,
-          average: "84.5%",
+          photoUrl: customPhoto || (s as any).photoUrl || undefined,
+          absences: childAtts.length,
+          average: averageStr,
           conduct: "Excellente"
         };
       });
     }
 
-    // If students list is populated but no specific parent link matched, let user select from students
-    if (students.length > 0) {
-      return students.slice(0, 3).map((s, idx) => {
-        const schId = s.schoolId || "sch-141992";
-        const customPhoto = getStoredProfilePhoto(schId, s.id) || getStoredProfilePhoto(schId, s.registrationNumber);
-        return {
-          id: s.id,
-          rawStudent: s,
-          schoolId: schId,
-          schoolName: s.schoolName || printConfig?.schoolName || "Complexe Scolaire SmartSchool RDC",
-          name: `${s.lastName} ${s.firstName}`,
-          class: s.className || "6ème Primaire",
-          option: s.optionName || "Tronc Commun",
-          matricule: s.registrationNumber || s.id || `ELE-${idx + 1}`,
-          photoUrl: customPhoto || (s as any).photoUrl || "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&h=150&fit=crop",
-          absences: idx === 0 ? 1 : 0,
-          average: "84.5%",
-          conduct: "Excellente"
-        };
-      });
-    }
+    return [];
+  }, [students, parents, userName, userEmail, currentUserId, printConfig?.schoolName, photoRefreshKey, attendances, grades]);
 
-    return [
-      {
-        id: "child-default",
-        rawStudent: null,
-        schoolId: "sch-141992",
-        schoolName: printConfig?.schoolName || "Complexe Scolaire SmartSchool RDC",
-        name: "Élève SmartSchool",
-        class: "6ème Primaire",
-        option: "Générale",
-        matricule: "ID-EPST-9012",
-        photoUrl: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&h=150&fit=crop",
-        absences: 0,
-        average: "84.5%",
-        conduct: "Excellente"
-      }
-    ];
-  }, [students, parents, userName, userEmail, currentUserId, printConfig?.schoolName, photoRefreshKey]);
-
-  const [selectedChildId, setSelectedChildId] = useState<string>(() => children[0]?.id || "child-default");
+  const [selectedChildId, setSelectedChildId] = useState<string>(() => children[0]?.id || "");
 
   React.useEffect(() => {
     if (children.length > 0 && !children.find(c => c.id === selectedChildId)) {
@@ -302,44 +295,184 @@ export function ParentModule({
     }, 6000);
   };
 
-  // Notes/Grades
-  const childGrades = [
-    { course: "Mathématiques", score: "45/50", status: "Validé" },
-    { course: "Physique Chimie", score: "39/50", status: "Validé" },
-    { course: "Langue Française", score: "42/50", status: "Validé" },
-    { course: "Histoire de la RDC", score: "48/50", status: "Validé" },
-    { course: "Technologie", score: "44/50", status: "Validé" }
-  ];
+  // Evaluations and scores from evaluationService for current child
+  const { childEvaluations, childScheduledEvaluations } = React.useMemo(() => {
+    if (!currentChild) return { childEvaluations: [], childScheduledEvaluations: [] };
+    const schId = currentChild.schoolId || "sch-141992";
+    const allEvals = getStoredEvaluations(schId);
+    const allScores = getStoredEvaluationScores(schId);
 
-  // Bulletins
-  const bulletins = [
-    { id: "BUL-1", term: "1er Trimestre", globalRate: "84.5%", releaseDate: "18/12/2025" },
-    { id: "BUL-2", term: "2ème Trimestre", globalRate: "82.1%", releaseDate: "02/04/2026" }
-  ];
+    const targetStudentId = currentChild.id;
+    const targetStudentName = currentChild.name ? currentChild.name.toLowerCase() : "";
 
-  // Absences
-  const absences = [
-    { date: "28/06/2026", status: "Absence Justifiée", comment: "Certificat de consultation pédiatrique déposé." }
-  ];
+    // Scheduled evaluations for child's class
+    const scheduled = allEvals.filter(e => 
+      (e.className?.toLowerCase() === currentChild.class?.toLowerCase() || (e as any).classId === currentChild.class) &&
+      (e.isScheduled || new Date(e.date) >= new Date())
+    );
+
+    // Published evaluations with child's score
+    const studentScores = allScores.filter(s => 
+      s.studentId === targetStudentId || 
+      (currentChild.rawStudent && s.studentId === currentChild.rawStudent.id) ||
+      (s.studentName && targetStudentName && s.studentName.toLowerCase().includes(targetStudentName))
+    );
+
+    const publishedEvals = allEvals
+      .filter(e => e.status === "published" || e.status === "validated")
+      .map(ev => {
+        const sc = studentScores.find(s => s.evaluationId === ev.id);
+        const hasScore = sc && sc.scoreObtained !== null && sc.scoreObtained !== undefined;
+        const pct = hasScore && ev.maxScore > 0 ? ((sc.scoreObtained! / ev.maxScore) * 100).toFixed(1) : null;
+        return {
+          evaluation: ev,
+          score: sc,
+          scoreObtained: hasScore ? sc.scoreObtained : null,
+          maxScore: ev.maxScore,
+          percentage: pct,
+          isAbsent: sc?.isAbsent,
+          isDispensed: sc?.isDispensed,
+          comments: sc?.comments
+        };
+      })
+      .filter(item => item.score !== undefined);
+
+    return { childEvaluations: publishedEvals, childScheduledEvaluations: scheduled };
+  }, [currentChild]);
+
+  // Dynamic Notes/Grades for current child
+  const childGrades = React.useMemo(() => {
+    if (!currentChild) return [];
+    const matched = grades.filter(
+      g => g.studentId === currentChild.id ||
+           (currentChild.rawStudent && g.studentId === currentChild.rawStudent.id) ||
+           (g.studentName && currentChild.name && g.studentName.toLowerCase().includes(currentChild.name.toLowerCase()))
+    );
+    return matched.map(g => ({
+      course: g.subjectName || "Matière",
+      score: `${g.scoreObtained}/${g.maxScore}`,
+      status: g.evaluationType === "Examen" ? "Examen Validé" : "Note Périodique"
+    }));
+  }, [grades, currentChild]);
+
+  // Official Congolese Bulletin for current child (EPST RDC Source of Truth)
+  const officialBulletin = React.useMemo(() => {
+    if (!currentChild) return null;
+    const targetStudent = currentChild.rawStudent || students.find(s => s.id === currentChild.id) || ({
+      id: currentChild.id,
+      registrationNumber: `MAT-${currentChild.id?.slice(-6) || "9921"}`,
+      name: currentChild.name,
+      firstName: currentChild.name.split(" ")[0] || "",
+      lastName: currentChild.name.split(" ").slice(1).join(" ") || "",
+      className: currentChild.class,
+      gender: "M",
+      birthDate: "2010-01-01",
+      address: "Kinshasa",
+      parentName: "Parent",
+      parentPhone: "+243810000000",
+      optionName: "Générale",
+      status: "Validé"
+    } as unknown as Student);
+
+    const classStudents = students.filter(s => (s.className || (s as any).classRoom) === (currentChild.class || ""));
+
+    return calculateOfficialStudentBulletin({
+      student: targetStudent,
+      allClassStudents: classStudents.length > 0 ? classStudents : [targetStudent],
+      subjects,
+      grades,
+      academicYear: "2026-2027",
+      schoolName: "Complexe Scolaire SmartSchool RDC"
+    });
+  }, [currentChild, students, subjects, grades]);
+
+  // Dynamic Bulletins for current child
+  const bulletins = React.useMemo(() => {
+    if (!currentChild || !officialBulletin) return [];
+    return [
+      { 
+        id: `BUL-${currentChild.id}-S1`, 
+        term: "1er Semestre (P1, P2 + Examen)", 
+        globalRate: `${officialBulletin.percentageSem1}%`, 
+        decision: officialBulletin.officialDecision,
+        releaseDate: new Date().toLocaleDateString("fr-FR"),
+        bulletinData: officialBulletin
+      },
+      { 
+        id: `BUL-${currentChild.id}-ANNUEL`, 
+        term: "Grille Annuelle Officielle EPST", 
+        globalRate: `${officialBulletin.percentageAnnual}%`, 
+        decision: officialBulletin.officialDecision,
+        releaseDate: new Date().toLocaleDateString("fr-FR"),
+        bulletinData: officialBulletin
+      }
+    ];
+  }, [currentChild, officialBulletin]);
+
+  // Dynamic Absences for current child
+  const absences = React.useMemo(() => {
+    if (!currentChild) return [];
+    const matched = attendances.filter(
+      a => (a.studentId === currentChild.id ||
+           (currentChild.rawStudent && a.studentId === currentChild.rawStudent.id) ||
+           (a.studentName && currentChild.name && a.studentName.toLowerCase().includes(currentChild.name.toLowerCase()))) &&
+           a.status !== "Présent"
+    );
+    return matched.map(a => ({
+      date: a.date,
+      status: a.status,
+      comment: a.isJustified ? "Absence justifiée" : (a.reason || (a as any).notes || "Non justifiée")
+    }));
+  }, [attendances, currentChild]);
 
   // Homework
-  const activeHomeworks = [
-    { id: "hw-1", title: "Exercices de structure atomique", course: "Physique Chimie", deadline: "02/07/2026", status: "Non soumis" },
-    { id: "hw-2", title: "Dissertation philosophique", course: "Philosophie & Citoyenneté", deadline: "28/06/2026", status: "Soumis & Validé" }
-  ];
+  const activeHomeworks: any[] = [];
 
-  // Teachers for communication
-  const childTeachers = [
-    { name: "Ir IT Fred Kalonda", course: "Technologie / Physique", isOnline: true },
-    { name: "M. Mukendi", course: "Mathématiques", isOnline: false }
-  ];
+  // Dynamic Teachers for communication
+  const childTeachers = React.useMemo(() => {
+    if (!currentChild) return [];
+    const relevant = teachers.filter(t => 
+      !t.assignedClasses || t.assignedClasses.length === 0 || (currentChild.class && t.assignedClasses.includes(currentChild.class))
+    );
+    if (relevant.length > 0) {
+      return relevant.map(t => ({
+        id: t.id,
+        name: `Prof. ${t.lastName} ${t.firstName}`,
+        course: t.specialty || "Enseignant",
+        isOnline: true
+      }));
+    }
+    return teachers.map(t => ({
+      id: t.id,
+      name: `Prof. ${t.lastName} ${t.firstName}`,
+      course: t.specialty || "Enseignant",
+      isOnline: true
+    }));
+  }, [teachers, currentChild]);
 
-  // Important Notifications
-  const parentNotifications = [
-    { id: "not-1", text: "Absence enregistrée pour Mutombo Jean-Bosco le 28/06/2026.", date: "28/06/2026 à 08:30" },
-    { id: "not-2", text: "Le bulletin du 2ème Trimestre est disponible au téléchargement.", date: "02/04/2026 à 14:00" },
-    { id: "not-3", text: "Paiement de 150 USD enregistré pour le Minerval 1e Trimestre.", date: "05/09/2025 à 11:20" }
-  ];
+  // Dynamic Notifications for parent
+  const parentNotifications = React.useMemo(() => {
+    const list: any[] = [];
+    if (childPayments.length > 0) {
+      childPayments.slice(0, 3).forEach((p, idx) => {
+        list.push({
+          id: `pnot-${idx}`,
+          text: `Paiement de ${p.amount} ${p.currency || "USD"} (${p.paymentType}) pour ${p.studentName}. Statut: ${p.isValidated ? "Validé" : "En attente"}.`,
+          date: p.createdAt || "Récent"
+        });
+      });
+    }
+    if (absences.length > 0) {
+      absences.slice(0, 2).forEach((a, idx) => {
+        list.push({
+          id: `anot-${idx}`,
+          text: `Signalement d'absence le ${a.date} (${a.status}).`,
+          date: a.date
+        });
+      });
+    }
+    return list;
+  }, [childPayments, absences]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -867,14 +1000,14 @@ export function ParentModule({
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {childPayments.length > 0 ? (
                         childPayments.map((pay, idx) => {
-                          const isSuccess = pay.isValidated || pay.status === "Approuvé" || pay.status === "Validé" || pay.transactionStatus === "Succès";
-                          const isPending = !isSuccess && (pay.status === "En attente" || pay.transactionStatus === "En attente" || !pay.isValidated);
+                          const isSuccess = pay.isValidated || (pay as any).status === "Approuvé" || (pay as any).status === "Validé" || pay.transactionStatus === "Succès";
+                          const isPending = !isSuccess && ((pay as any).status === "En attente" || pay.transactionStatus === "En attente" || !pay.isValidated);
 
                           return (
                             <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/30">
                               <td className="p-3 font-mono font-bold text-slate-700 dark:text-slate-300">
-                                <div>{pay.reference || pay.transactionRef || pay.id}</div>
-                                <span className="text-[9px] text-slate-400 font-normal">{pay.createdAt || pay.date || "Récemment"}</span>
+                                <div>{pay.reference || (pay as any).transactionRef || pay.id}</div>
+                                <span className="text-[9px] text-slate-400 font-normal">{pay.createdAt || (pay as any).date || "Récemment"}</span>
                               </td>
                               <td className="p-3">
                                 <div className="font-semibold text-slate-800 dark:text-slate-200">{pay.paymentType}</div>
@@ -956,38 +1089,137 @@ export function ParentModule({
           {activeSubTab === "notes" && (
             <div className="space-y-6">
               <div className="border-b pb-3 space-y-1">
-                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase">Notes & Bulletins de l'Enfant</h3>
-                <p className="text-slate-500 text-[10px]">Carnet de notes consolidé et téléchargement des bulletins scolaires trimestriels.</p>
+                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase">Notes & Évaluations Scolaires de l'Enfant</h3>
+                <p className="text-slate-500 text-[10px]">Résultats certifiés des interrogations, devoirs et examens de {currentChild.name} ({currentChild.class}).</p>
               </div>
 
-              <div className="space-y-4">
-                <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm border-b pb-1.5 uppercase">Moyennes de Période</h4>
-                <div className="border rounded-xl overflow-hidden">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-950 border-b text-slate-500 font-bold">
-                        <th className="p-3">Matière / Cours</th>
-                        <th className="p-3 text-right">Note Validée</th>
-                        <th className="p-3 text-right">Statut académique</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {childGrades.map((g, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                          <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{g.course}</td>
-                          <td className="p-3 text-right font-black text-indigo-600 font-mono">{g.score}</td>
-                          <td className="p-3 text-right">
-                            <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
-                              {g.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* Épreuves programmées à venir pour la classe de l'enfant */}
+              {childScheduledEvaluations.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4" />
+                    <span>Calendrier des Épreuves Programmées ({currentChild.class})</span>
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {childScheduledEvaluations.map(se => (
+                      <div key={se.id} className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{se.title}</span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
+                            {se.type}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span>Matière : <strong>{se.subjectName}</strong></span>
+                          <span>Date : <strong>{se.date}</strong></span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex justify-between">
+                          <span>Barème : <strong>/{se.maxScore} pts</strong></span>
+                          <span>Période : <strong>{se.period}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
+              {/* Évaluations publiées détaillées */}
+              {childEvaluations.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Award className="h-4 w-4 text-emerald-600" />
+                    <span>Détail des Épreuves & Devoirs Notés</span>
+                  </h4>
+                  <div className="border rounded-2xl overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-950 border-b text-slate-500 font-bold uppercase text-[10px]">
+                          <th className="p-3">Matière</th>
+                          <th className="p-3">Épreuve / Devoir</th>
+                          <th className="p-3">Période</th>
+                          <th className="p-3 text-center">Note Obtenue</th>
+                          <th className="p-3 text-center">Pourcentage</th>
+                          <th className="p-3">Observation Enseignant</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {childEvaluations.map((item, idx) => {
+                          const numPct = item.percentage ? parseFloat(item.percentage) : 0;
+                          const isPass = numPct >= 50;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                              <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{item.evaluation.subjectName}</td>
+                              <td className="p-3">
+                                <span className="font-bold block">{item.evaluation.title}</span>
+                                <span className="text-[10px] text-slate-400 uppercase">{item.evaluation.type} • {item.evaluation.date}</span>
+                              </td>
+                              <td className="p-3 font-mono font-bold text-slate-600 dark:text-slate-400">{item.evaluation.period}</td>
+                              <td className="p-3 text-center font-mono font-bold">
+                                {item.isAbsent ? (
+                                  <span className="text-rose-500 font-bold">ABSENT</span>
+                                ) : item.isDispensed ? (
+                                  <span className="text-amber-500 font-bold">DISPENSÉ</span>
+                                ) : item.scoreObtained !== null ? (
+                                  <span className="text-slate-900 dark:text-white font-black">{item.scoreObtained} / {item.maxScore}</span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                {item.percentage ? (
+                                  <span className={`px-2 py-0.5 rounded-full font-mono font-black text-[11px] ${
+                                    isPass ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                  }`}>
+                                    {item.percentage}%
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-[11px] text-slate-600 dark:text-slate-400 italic">
+                                {item.comments || (isPass ? "Très bonne assimilation" : "À renforcer")}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Synthèse périodique si disponible */}
+              {childGrades.length > 0 && (
+                <div className="space-y-4">
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm border-b pb-1.5 uppercase">Moyennes Périodiques Consolidées</h4>
+                  <div className="border rounded-xl overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-950 border-b text-slate-500 font-bold">
+                          <th className="p-3">Matière / Cours</th>
+                          <th className="p-3 text-right">Note Validée</th>
+                          <th className="p-3 text-right">Statut académique</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {childGrades.map((g, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                            <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{g.course}</td>
+                            <td className="p-3 text-right font-black text-indigo-600 font-mono">{g.score}</td>
+                            <td className="p-3 text-right">
+                              <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                                {g.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Bulletins Trimestriels */}
               <div className="space-y-4 pt-4 border-t">
                 <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm border-b pb-1.5 uppercase">Bulletins Trimestriels de l'Enfant</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1001,11 +1233,22 @@ export function ParentModule({
                       </div>
 
                       <button 
-                        onClick={() => alert(`Téléchargement de ${b.id} validé...`)}
+                        onClick={() => {
+                          setPrintData({
+                            studentName: currentChild.name,
+                            className: currentChild.class,
+                            studentGender: currentChild.rawStudent?.gender || "M",
+                            permanentId: (currentChild.rawStudent as any)?.permanentId || `EPST-2026-${currentChild.id?.slice(-6) || "9921"}`,
+                            academicYear: "2026-2027",
+                            bulletin: b.bulletinData
+                          });
+                          setPrintDocType("bulletin_epst");
+                          setPrintModalOpen(true);
+                        }}
                         className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl cursor-pointer inline-flex items-center space-x-1"
                       >
                         <Download className="h-3.5 w-3.5" />
-                        <span>PDF</span>
+                        <span>Bulletin PDF</span>
                       </button>
                     </div>
                   ))}
@@ -1179,48 +1422,44 @@ export function ParentModule({
 
               {/* Contacts Directory Cards Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  { id: "dir-1", name: "Sr. Marie-Therese Kasonia", function: "Directrice Générale", roleBadge: "Direction", course: "Administration Scolaire", avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80" },
-                  { id: "dir-2", name: "M. Mbuyi Tshilombo", function: "Préfet des Études", roleBadge: "Direction", course: "Supervision Pédagogique", avatar: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80" },
-                  { id: "dir-3", name: "M. Bakala Antoine", function: "Titulaire de 6ème Primaire", roleBadge: "Titulaire", course: "Français & Discipline", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" },
-                  { id: "dir-4", name: "Ir IT Fred Kalonda", function: "Enseignant", roleBadge: "Enseignant", course: "Technologie & Informatique", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" },
-                  { id: "dir-5", name: "Mme. Sarah Mukendi", function: "Comptable Principale", roleBadge: "Finance", course: "Caisse & Minerval", avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80" },
-                  { id: "dir-6", name: "M. Kabeya Joseph", function: "Secrétaire Général", roleBadge: "Administration", course: "Inscriptions & Fiches", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80" }
-                ]
-                .filter(u => u.name.toLowerCase().includes(directorySearchQuery.toLowerCase()) || u.function.toLowerCase().includes(directorySearchQuery.toLowerCase()) || u.course.toLowerCase().includes(directorySearchQuery.toLowerCase()))
-                .map(contact => (
-                  <div key={contact.id} className="p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs flex items-center justify-between gap-3 hover:border-indigo-500/50 transition-all">
-                    <div className="flex items-center space-x-3 min-w-0">
-                      {contact.avatar ? (
-                        <img src={contact.avatar} alt={contact.name} className="h-12 w-12 rounded-xl object-cover border border-slate-200 dark:border-slate-800 shrink-0" />
-                      ) : (
-                        <div className="h-12 w-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 shrink-0">
-                          {contact.name[0]}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <div className="flex items-center space-x-1.5">
-                          <h4 className="font-bold text-slate-900 dark:text-white truncate">{contact.name}</h4>
-                        </div>
-                        <p className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 truncate">{contact.function}</p>
-                        <p className="text-[9px] text-slate-400 truncate">{contact.course}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (onNavigateToMessagerie) {
-                          onNavigateToMessagerie(contact.id);
-                        } else {
-                          setActiveSubTab("messagerie");
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold rounded-xl shrink-0 flex items-center space-x-1 shadow-xs cursor-pointer transition-transform hover:scale-105"
-                    >
-                      <MessageSquare className="h-3.5 w-3.5" />
-                      <span>Discuter</span>
-                    </button>
+                {teachers.length === 0 ? (
+                  <div className="col-span-2 text-center py-10 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-6">
+                    <Users className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                    <p className="text-xs text-slate-500 font-medium">Aucun enseignant ou encadreur enregistré dans l'annuaire scolaire.</p>
                   </div>
-                ))}
+                ) : (
+                  teachers
+                    .filter(u => `${u.firstName} ${u.lastName}`.toLowerCase().includes(directorySearchQuery.toLowerCase()) || (u.specialty && u.specialty.toLowerCase().includes(directorySearchQuery.toLowerCase())))
+                    .map(contact => (
+                      <div key={contact.id} className="p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs flex items-center justify-between gap-3 hover:border-indigo-500/50 transition-all">
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-teal-500 text-white font-bold flex items-center justify-center text-sm shrink-0">
+                            {contact.firstName?.[0] || "P"}{contact.lastName?.[0] || "E"}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center space-x-1.5">
+                              <h4 className="font-bold text-slate-900 dark:text-white truncate">Prof. {contact.lastName} {contact.firstName}</h4>
+                            </div>
+                            <p className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 truncate">{contact.specialty || "Enseignant titulaire"}</p>
+                            <p className="text-[9px] text-slate-400 truncate">{contact.assignedClasses?.join(", ") || "Corps professoral"}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (onNavigateToMessagerie) {
+                              onNavigateToMessagerie(contact.id);
+                            } else {
+                              setActiveSubTab("messagerie");
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold rounded-xl shrink-0 flex items-center space-x-1 shadow-xs cursor-pointer transition-transform hover:scale-105"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>Discuter</span>
+                        </button>
+                      </div>
+                    ))
+                )}
               </div>
             </div>
           )}
@@ -1273,6 +1512,16 @@ export function ParentModule({
             setPaymentSuccessMsg(`Paiement de ${payment.amount} ${payment.currency} validé avec succès (Réf: ${payment.reference}). Reçu officiel généré.`);
             setIsMomoModalOpen(false);
           }}
+        />
+      )}
+
+      {/* Print Preview Modal */}
+      {printModalOpen && (
+        <PrintPreviewModal
+          documentType={printDocType}
+          data={printData}
+          onClose={() => setPrintModalOpen(false)}
+          title={`Bulletin Officiel EPST - ${currentChild?.name || "Élève"}`}
         />
       )}
 

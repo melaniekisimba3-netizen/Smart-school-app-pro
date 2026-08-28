@@ -1,0 +1,12 @@
+{
+  "currentVersion": "2026.3.0-PROD",
+  "buildNumber": "20260829.PROD.STABLE",
+  "databaseSchemaVersion": "2026.3.0",
+  "installedAt": "2026-08-01T00:00:00.000Z",
+  "lastUpdateCheckedAt": "2026-08-28T11:03:48.324Z",
+  "autoSecurityPatchingEnabled": true,
+  "tenantsProtectedCount": 1,
+  "totalRecordsProtected": 2,
+  "lastBackupSnapshotId": "snapshot-2026-08-28T11-03-51-438Z-1552",
+  "lastUpdateAppliedAt": "2026-08-28T10:24:32.003Z"
+}

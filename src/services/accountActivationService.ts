@@ -1158,7 +1158,17 @@ export function getStoredUniversalUserAccounts(): UserAccount[] {
     const raw = safeLocalStorage.getItem(UNIVERSAL_ACCOUNTS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const uniqueList: UserAccount[] = [];
+    for (const a of parsed) {
+      if (!a) continue;
+      const key = a.id || a.username;
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      uniqueList.push(a);
+    }
+    return uniqueList;
   } catch (err) {
     console.error("Erreur lors de la lecture des comptes universels:", err);
     return [];

@@ -29,11 +29,13 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { NationalCultureHeritageModule } from "./NationalCultureHeritageModule";
-import { Student, Payment, Grade, Attendance, UserAccount } from "../types";
+import { Student, Payment, Grade, Attendance, UserAccount, SchoolBulletinPermissions, Subject } from "../types";
 import { getStoredUniversalUserAccounts } from "../services/accountActivationService";
 import { usePedagogicalTimetable } from "../context/PedagogicalTimetableContext";
 import { PhotoUploadField } from "./common/PhotoUploadField";
 import { saveUserProfilePhoto, getStoredProfilePhoto } from "../services/userPhotoService";
+import { getStoredEvaluations, getStoredEvaluationScores } from "../services/evaluationService";
+import { calculateOfficialStudentBulletin, OfficialStudentBulletin } from "../services/officialBulletinService";
 
 interface StudentModuleProps {
   userRole: string;
@@ -42,9 +44,11 @@ interface StudentModuleProps {
   currentUserId?: string;
   currentUserAccount?: UserAccount | null;
   students?: Student[];
+  subjects?: Subject[];
   payments?: Payment[];
   grades?: Grade[];
   attendances?: Attendance[];
+  bulletinSettings?: SchoolBulletinPermissions;
   onNavigateToMessagerie?: (targetUserId?: string) => void;
 }
 
@@ -55,9 +59,11 @@ export function StudentModule({
   currentUserId,
   currentUserAccount,
   students = [], 
+  subjects = [],
   payments = [], 
   grades = [],
   attendances: globalAttendances = [],
+  bulletinSettings,
   onNavigateToMessagerie 
 }: StudentModuleProps) {
   const { timetableEntries, classJournalEntries } = usePedagogicalTimetable();
@@ -202,9 +208,7 @@ export function StudentModule({
         firstName: resolvedStudent.firstName,
         lastName: resolvedStudent.lastName,
         postName: resolvedStudent.postName || "",
-        photoUrl: (resolvedStudent as any).photoUrl || (resolvedStudent.gender === "F"
-          ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop"
-          : "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&h=200&fit=crop"),
+        photoUrl: (resolvedStudent as any).photoUrl || undefined,
         className: resolvedStudent.className || "",
         optionName: resolvedStudent.optionName || "",
         birthDate: resolvedStudent.birthDate || "",
@@ -230,7 +234,7 @@ export function StudentModule({
       firstName: fName,
       lastName: lName,
       postName: "",
-      photoUrl: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&h=200&fit=crop",
+      photoUrl: undefined,
       className: "",
       optionName: "",
       birthDate: "",
@@ -338,19 +342,57 @@ export function StudentModule({
       }));
     }
 
-    return [
-      { id: "PAI-9011", feeType: "Minerval - 1er Trimestre", amount: 150, currency: "USD", date: "05/09/2025", method: "M-Pesa Mobile Money", status: "Validé" },
-      { id: "PAI-9042", feeType: "Frais d'Examen & Laboratoire", amount: 45, currency: "USD", date: "15/12/2025", method: "Cash Caisse", status: "Validé" },
-      { id: "PAI-9109", feeType: "Minerval - 2ème Trimestre", amount: 150, currency: "USD", date: "22/02/2026", method: "Orange Money", status: "Validé" }
-    ];
+    return [];
   }, [payments, studentInfo]);
+
+  // Evaluations and scores from evaluationService
+  const { studentEvaluations, scheduledEvaluations } = useMemo(() => {
+    const allEvals = getStoredEvaluations("sch-141992");
+    const allScores = getStoredEvaluationScores("sch-141992");
+
+    const targetStudentId = studentInfo.rawId || studentInfo.id;
+    const targetStudentName = studentInfo.lastName ? studentInfo.lastName.toLowerCase() : "";
+
+    // Scheduled evaluations for student's class
+    const scheduled = allEvals.filter(e => 
+      (e.className?.toLowerCase() === studentInfo.className?.toLowerCase() || (e as any).classId === studentInfo.className) &&
+      (e.isScheduled || new Date(e.date) >= new Date())
+    );
+
+    // Published evaluations with student's score
+    const studentScores = allScores.filter(s => 
+      s.studentId === targetStudentId || 
+      (s.studentName && targetStudentName && s.studentName.toLowerCase().includes(targetStudentName))
+    );
+
+    const publishedEvals = allEvals
+      .filter(e => e.status === "published" || e.status === "validated")
+      .map(ev => {
+        const sc = studentScores.find(s => s.evaluationId === ev.id);
+        const hasScore = sc && sc.scoreObtained !== null && sc.scoreObtained !== undefined;
+        const pct = hasScore && ev.maxScore > 0 ? ((sc.scoreObtained! / ev.maxScore) * 100).toFixed(1) : null;
+        return {
+          evaluation: ev,
+          score: sc,
+          scoreObtained: hasScore ? sc.scoreObtained : null,
+          maxScore: ev.maxScore,
+          percentage: pct,
+          isAbsent: sc?.isAbsent,
+          isDispensed: sc?.isDispensed,
+          comments: sc?.comments
+        };
+      })
+      .filter(item => item.score !== undefined);
+
+    return { studentEvaluations: publishedEvals, scheduledEvaluations: scheduled };
+  }, [studentInfo]);
 
   // Notes/Grades filtered specifically for this student
   const studentGrades = useMemo(() => {
     const matched = grades.filter(
       g => g.studentId === studentInfo.rawId || 
            g.studentId === studentInfo.id ||
-           g.studentName?.toLowerCase().includes(studentInfo.lastName.toLowerCase())
+           (g.studentName && studentInfo.lastName && g.studentName.toLowerCase().includes(studentInfo.lastName.toLowerCase()))
     );
 
     if (matched.length > 0) {
@@ -362,28 +404,69 @@ export function StudentModule({
       }));
     }
 
-    return [
-      { course: "Mathématiques", examScore: "45/50", periodicScore: "38/40", teacher: "M. Mukendi" },
-      { course: "Physique Chimie", examScore: "39/50", periodicScore: "35/40", teacher: "Mme Nabintu" },
-      { course: "Langue Française", examScore: "42/50", periodicScore: "37/40", teacher: "M. Mwamba" },
-      { course: "Histoire de la RDC", examScore: "48/50", periodicScore: "39/40", teacher: "M. Kalonda" },
-      { course: "Technologie & Informatique", examScore: "44/50", periodicScore: "36/40", teacher: "Ir IT Fred Kalonda" }
-    ];
+    return [];
   }, [grades, studentInfo]);
 
+  // Official Congolese Bulletin Calculation (EPST RDC Source of Truth)
+  const officialBulletin = useMemo(() => {
+    const classStudents = students.filter(s => (s.className || (s as any).classRoom) === (studentInfo.className || ""));
+    const currentStudentObj = resolvedStudent || ({
+      id: studentInfo.rawId || studentInfo.id,
+      registrationNumber: (studentInfo as any).studentNumber || `MAT-${studentInfo.id?.slice(-6) || "9921"}`,
+      name: `${studentInfo.lastName} ${studentInfo.firstName}`.trim(),
+      firstName: studentInfo.firstName,
+      lastName: studentInfo.lastName,
+      postName: studentInfo.postName,
+      gender: studentInfo.gender,
+      className: studentInfo.className,
+      birthDate: "2010-01-01",
+      address: "Kinshasa",
+      parentName: "Parent",
+      parentPhone: "+243810000000",
+      optionName: studentInfo.optionName,
+      status: "Validé"
+    } as unknown as Student);
+
+    return calculateOfficialStudentBulletin({
+      student: currentStudentObj,
+      allClassStudents: classStudents.length > 0 ? classStudents : [currentStudentObj],
+      subjects,
+      grades,
+      academicYear: "2026-2027",
+      schoolName: "Complexe Scolaire SmartSchool RDC"
+    });
+  }, [resolvedStudent, studentInfo, students, subjects, grades]);
+
   // Bulletins personalized for this student
-  const bulletins = useMemo(() => [
-    { id: `BUL-${studentInfo.id}-T1`, term: "1er Trimestre - Consolidé", status: "Publié", releaseDate: "18/12/2025", globalRate: "84.5%", decision: "Excellent" },
-    { id: `BUL-${studentInfo.id}-T2`, term: "2ème Trimestre - Consolidé", status: "Publié", releaseDate: "02/04/2026", globalRate: "82.1%", decision: "Félicitations" },
-    { id: `BUL-${studentInfo.id}-T3`, term: "3ème Trimestre - En cours", status: "En cours d'édition", releaseDate: "Fin d'année", globalRate: "-", decision: "-" }
-  ], [studentInfo]);
+  const bulletins = useMemo(() => {
+    return [
+      { 
+        id: `BUL-${studentInfo.id || "std"}-S1`, 
+        term: "1er Semestre (P1, P2 + Examen)", 
+        status: "Publié", 
+        releaseDate: new Date().toLocaleDateString("fr-FR"), 
+        globalRate: `${officialBulletin.percentageSem1}%`, 
+        decision: officialBulletin.officialDecision,
+        bulletinData: officialBulletin
+      },
+      { 
+        id: `BUL-${studentInfo.id || "std"}-ANNUEL`, 
+        term: "Grille Annuelle Officielle EPST", 
+        status: "Publié", 
+        releaseDate: new Date().toLocaleDateString("fr-FR"), 
+        globalRate: `${officialBulletin.percentageAnnual}%`, 
+        decision: officialBulletin.officialDecision,
+        bulletinData: officialBulletin
+      }
+    ];
+  }, [officialBulletin, studentInfo]);
 
   // Attendances filtered specifically for this student
   const attendances = useMemo(() => {
     const matched = globalAttendances.filter(
       a => a.studentId === studentInfo.rawId || 
            a.studentId === studentInfo.id ||
-           a.studentName?.toLowerCase().includes(studentInfo.lastName.toLowerCase())
+           (a.studentName && studentInfo.lastName && a.studentName.toLowerCase().includes(studentInfo.lastName.toLowerCase()))
     );
 
     if (matched.length > 0) {
@@ -394,13 +477,7 @@ export function StudentModule({
       }));
     }
 
-    return [
-      { date: "30/06/2026", status: "Présent", comment: "À l'heure" },
-      { date: "29/06/2026", status: "Présent", comment: "À l'heure" },
-      { date: "28/06/2026", status: "Absent Justifié", comment: "Rendez-vous médical certifié" },
-      { date: "27/06/2026", status: "Présent", comment: "À l'heure" },
-      { date: "26/06/2026", status: "Présent", comment: "À l'heure" },
-    ];
+    return [];
   }, [globalAttendances, studentInfo]);
 
   // Devoirs / Homework
@@ -791,32 +868,127 @@ export function StudentModule({
           {activeSubTab === "notes" && (
             <div className="space-y-6">
               <div className="border-b pb-3 space-y-1">
-                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase">Relevé de Notes Courant</h3>
-                <p className="text-slate-500 text-[10px]">Notes des interrogations, examens et travaux dirigés.</p>
+                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase">Carnet de Cotes & Évaluations Scolaires</h3>
+                <p className="text-slate-500 text-[10px]">Résultats détaillés des devoirs, interrogations, travaux pratiques et examens validés par l'établissement.</p>
               </div>
 
-              <div className="border rounded-xl overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-950 border-b text-slate-500 font-bold">
-                      <th className="p-3">Matière / Cours</th>
-                      <th className="p-3">Interro / Continu</th>
-                      <th className="p-3">Examen final</th>
-                      <th className="p-3">Enseignant responsable</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {studentGrades.map((grade, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                        <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{grade.course}</td>
-                        <td className="p-3 font-bold text-emerald-600">{grade.periodicScore}</td>
-                        <td className="p-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">{grade.examScore}</td>
-                        <td className="p-3 text-slate-500">{grade.teacher}</td>
-                      </tr>
+              {/* Épreuves programmées */}
+              {scheduledEvaluations.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4" />
+                    <span>Calendrier des Épreuves Programmées à Venir</span>
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {scheduledEvaluations.map(se => (
+                      <div key={se.id} className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{se.title}</span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
+                            {se.type}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span>Matière : <strong>{se.subjectName}</strong></span>
+                          <span>Date : <strong>{se.date}</strong></span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex justify-between">
+                          <span>Barème : <strong>/{se.maxScore} pts</strong></span>
+                          <span>Période : <strong>{se.period}</strong></span>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Évaluations individuelles détaillées */}
+              {studentEvaluations.length > 0 ? (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Award className="h-4 w-4 text-emerald-600" />
+                    <span>Détail des Évaluations Validées</span>
+                  </h4>
+                  <div className="border rounded-2xl overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-950 border-b text-slate-500 font-bold uppercase text-[10px]">
+                          <th className="p-3">Matière</th>
+                          <th className="p-3">Évaluation</th>
+                          <th className="p-3">Période</th>
+                          <th className="p-3 text-center">Note / Barème</th>
+                          <th className="p-3 text-center">Pourcentage</th>
+                          <th className="p-3">Appréciation</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {studentEvaluations.map((item, idx) => {
+                          const numPct = item.percentage ? parseFloat(item.percentage) : 0;
+                          const isPass = numPct >= 50;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                              <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{item.evaluation.subjectName}</td>
+                              <td className="p-3">
+                                <span className="font-bold block">{item.evaluation.title}</span>
+                                <span className="text-[10px] text-slate-400 uppercase">{item.evaluation.type} • {item.evaluation.date}</span>
+                              </td>
+                              <td className="p-3 font-mono font-bold text-slate-600 dark:text-slate-400">{item.evaluation.period}</td>
+                              <td className="p-3 text-center font-mono font-bold">
+                                {item.isAbsent ? (
+                                  <span className="text-rose-500 font-bold">ABSENT</span>
+                                ) : item.isDispensed ? (
+                                  <span className="text-amber-500 font-bold">DISPENSÉ</span>
+                                ) : item.scoreObtained !== null ? (
+                                  <span className="text-slate-900 dark:text-white font-black">{item.scoreObtained} / {item.maxScore}</span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                {item.percentage ? (
+                                  <span className={`px-2 py-0.5 rounded-full font-mono font-black text-[11px] ${
+                                    isPass ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                  }`}>
+                                    {item.percentage}%
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-[11px] text-slate-600 dark:text-slate-400 italic">
+                                {item.comments || (isPass ? "Bon travail" : "À consolider")}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="border rounded-2xl overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-950 border-b text-slate-500 font-bold">
+                        <th className="p-3">Matière / Cours</th>
+                        <th className="p-3">Interro / Continu</th>
+                        <th className="p-3">Examen final</th>
+                        <th className="p-3">Enseignant responsable</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {studentGrades.map((grade, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                          <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{grade.course}</td>
+                          <td className="p-3 font-bold text-emerald-600">{grade.periodicScore}</td>
+                          <td className="p-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">{grade.examScore}</td>
+                          <td className="p-3 text-slate-500">{grade.teacher}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -847,11 +1019,15 @@ export function StudentModule({
                         onClick={() => setPrintModal({
                           docType: "bulletin_epst",
                           data: {
-                            studentName: `${studentInfo.lastName} ${studentInfo.firstName}`,
+                            studentName: `${studentInfo.lastName} ${studentInfo.firstName}`.trim(),
                             className: studentInfo.className,
-                            bulletin: { term: b.term, globalRate: b.globalRate, decision: b.decision }
+                            optionName: studentInfo.optionName,
+                            studentGender: studentInfo.gender,
+                            permanentId: (studentInfo as any).permanentId || `EPST-2026-${studentInfo.id?.slice(-6) || "9921"}`,
+                            academicYear: "2026-2027",
+                            bulletin: b.bulletinData
                           },
-                          title: `Bulletin - ${b.term}`
+                          title: `Bulletin Scolaire Officiel EPST - ${studentInfo.lastName} ${studentInfo.firstName}`
                         })}
                         className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl cursor-pointer inline-flex items-center space-x-1"
                       >

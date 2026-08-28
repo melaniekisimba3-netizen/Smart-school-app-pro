@@ -31,11 +31,12 @@ import {
   CheckCircle, XCircle, Clock, ShieldAlert, BadgeHelp, Check, Sparkles, Send, Bell,
   ShieldCheck, Building2, RefreshCw, Download, FileSpreadsheet, Eye, X, AlertCircle,
   School, Camera, Upload, Image as ImageIcon, AlertTriangle, ChevronRight, ArrowLeft, ArrowRight,
-  Copy, KeyRound, User, CheckCircle2, Smartphone, Power, Link2, UserCog, History
+  Copy, KeyRound, User, CheckCircle2, Smartphone, Power, Link2, UserCog, History, ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { SmartOptionsManagement } from "./SmartOptionsManagement";
+import { SchoolUpdateCenter } from "./SchoolUpdateCenter";
 
 // ---------------------------------------------------------------------------
 // FLUENT DESIGN SKELETON LOADING UI HELPERS
@@ -886,8 +887,8 @@ export function PupilsView({
   const [newPIsPrimary, setNewPIsPrimary] = useState(true);
 
   const availableClasses = classes.length > 0 
-    ? classes.map(c => `${c.classGrade || c.level} ${c.roomLetter}`) 
-    : ["3ème Humanités A", "4ème Humanités B", "2ème Humanités A", "1ère Humanités C", "6ème année A", "7ème EB A"];
+    ? classes.map(c => c.name || `${c.classGrade || c.level} ${c.roomLetter}`.trim()).filter(Boolean)
+    : [];
   const activeOptions = options.length > 0
     ? options.filter(o => o.isActivated !== false).map(o => o.name)
     : ["Mathématiques-Physique", "Commerciale et Gestion", "Pédagogie Générale", "Électricité", "Nutrition"];
@@ -2016,122 +2017,785 @@ export function PupilsView({
 }
 
 // ---------------------------------------------------------------------------
-// 3. GESTION DES ENSEIGNANTS
+// 3. GESTION DES ENSEIGNANTS & PORTAIL PÉDAGOGIQUE
 // ---------------------------------------------------------------------------
 interface TeachersViewProps {
   teachers: Teacher[];
-  onAddTeacher: (teacher: Omit<Teacher, "id">) => void;
+  onAddTeacher: (teacher: Omit<Teacher, "id">, autoCreateAccount?: boolean) => void;
   onDeleteTeacher: (id: string) => void;
+  onUpdateTeacher?: (teacher: Teacher) => void;
+  onUpdateTeachers?: React.Dispatch<React.SetStateAction<Teacher[]>>;
+  userAccounts?: UserAccount[];
+  onUpdateUserAccounts?: React.Dispatch<React.SetStateAction<UserAccount[]>>;
+  classes?: ClassRoom[];
+  subjects?: Subject[];
+  schoolId?: string;
+  schoolName?: string;
+  schoolLogoUrl?: string;
+  schoolMotto?: string;
+  onOpenPortal?: (account: UserAccount) => void;
+  onAddAuditLog?: (action: string, targetName: string) => void;
 }
 
-export function TeachersView({ teachers, onAddTeacher, onDeleteTeacher }: TeachersViewProps) {
+export function TeachersView({ 
+  teachers: initialTeachers, 
+  onAddTeacher, 
+  onDeleteTeacher,
+  onUpdateTeacher,
+  onUpdateTeachers,
+  userAccounts = [],
+  onUpdateUserAccounts,
+  classes = [],
+  subjects = [],
+  schoolId,
+  schoolName = "COMPLEXE SCOLAIRE SMARTSCHOOL RDC",
+  schoolLogoUrl,
+  schoolMotto = "Science - Conscience - Excellence",
+  onOpenPortal,
+  onAddAuditLog
+}: TeachersViewProps) {
+  const [teachersList, setTeachersList] = useState<Teacher[]>(initialTeachers || []);
   const [isAdding, setIsAdding] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterAccountStatus, setFilterAccountStatus] = useState<"all" | "active" | "unprovisioned">("all");
+
+  // Form State
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [postName, setPostName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [matriculeEtat, setMatriculeEtat] = useState("");
   const [specialty, setSpecialty] = useState("");
-  const [salaryBase, setSalaryBase] = useState(400);
+  const [salaryBase, setSalaryBase] = useState(450);
+  const [weeklyHours, setWeeklyHours] = useState(18);
+  const [assignedClassList, setAssignedClassList] = useState<string[]>([]);
+  const [autoCreateAccount, setAutoCreateAccount] = useState(true);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onAddTeacher({
-      firstName, lastName, email, phone, specialty, salaryBase, assignedClasses: ["3ème A"], weeklyHours: 18
-    });
-    setIsAdding(false);
-    setFirstName(""); setLastName(""); setEmail(""); setPhone(""); setSpecialty("");
+  // Sheet Modal & Details Modal State
+  const [selectedTeacherForSheet, setSelectedTeacherForSheet] = useState<UserAccount | null>(null);
+  const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+
+  // Sync teachers from parent
+  React.useEffect(() => {
+    if (initialTeachers) setTeachersList(initialTeachers);
+  }, [initialTeachers]);
+
+  // Available classes names for selection (Strictly from real DB classes)
+  const availableClassNames = React.useMemo(() => {
+    if (classes.length > 0) {
+      return classes.map(c => c.name || `${c.levelCategory === "Maternelle" ? "Maternelle " : ""}${c.classGrade || c.level} ${c.roomLetter}`.trim()).filter(Boolean);
+    }
+    return [];
+  }, [classes]);
+
+  // Generate real portal account for a teacher
+  const generateTeacherAccount = (teacherItem: Teacher) => {
+    const cleanFirstName = (teacherItem.firstName || "enseignant").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const cleanLastName = (teacherItem.lastName || "prof").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Check existing accounts
+    const storedAccounts = getStoredUniversalUserAccounts();
+    const existingAcc = storedAccounts.find(
+      a => a.dossierId === teacherItem.id || 
+           (teacherItem.matriculeEtat && a.username === teacherItem.matriculeEtat) ||
+           (teacherItem.phone && a.phone === teacherItem.phone) ||
+           (teacherItem.email && a.email === teacherItem.email)
+    );
+
+    const generatedUsername = existingAcc?.username || teacherItem.matriculeEtat || `ENS-${cleanLastName.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const generatedCode = existingAcc?.activationCode || teacherItem.activationCode || generateUniqueActivationCode("ENSEIGNANT");
+    const teacherPassword = existingAcc?.tempPassword || existingAcc?.password || `Prof${Math.floor(1000 + Math.random() * 9000)}!`;
+
+    const updatedTeacher: Teacher = {
+      ...teacherItem,
+      hasUserAccount: true,
+      accountCreated: true,
+      accountStatus: "active",
+      userAccountRole: "Enseignant",
+      username: generatedUsername,
+      activationCode: generatedCode,
+      tempPassword: teacherPassword,
+      portalAccess: true,
+      activationDate: teacherItem.activationDate || new Date().toLocaleDateString("fr-FR")
+    };
+
+    const newAccount: UserAccount = {
+      id: existingAcc?.id || `acc-ens-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      dossierId: teacherItem.id,
+      dossierType: "personnel",
+      fullName: `Prof. ${teacherItem.lastName} ${teacherItem.firstName}`,
+      username: generatedUsername,
+      matricule: teacherItem.matriculeEtat || generatedUsername,
+      role: "Enseignant",
+      functionTitle: `Enseignant / Spécialiste ${teacherItem.specialty || ""}`,
+      phone: teacherItem.phone,
+      email: teacherItem.email,
+      isActive: true,
+      isActivated: false,
+      activationCode: generatedCode,
+      tempPassword: teacherPassword,
+      isTempPassword: true,
+      schoolId: schoolId || teacherItem.schoolId || "sch-001",
+      schoolName: schoolName,
+      createdAt: new Date().toLocaleDateString("fr-FR"),
+      portalUrl: "/portail/enseignant",
+      portalCode: "PORTAL_TEACHER",
+      portalName: "Portail Pédagogique Enseignant",
+      targetPortalTab: "enseignants",
+      permissions: [
+        "portal_teacher_access",
+        "grade_entry",
+        "homework_management",
+        "attendance_recording",
+        "view_classes",
+        "chat_messagerie"
+      ]
+    };
+
+    // Update in memory & storage
+    persistUniversalUserAccount(newAccount);
+
+    if (onUpdateUserAccounts) {
+      onUpdateUserAccounts(prev => {
+        const filtered = prev.filter(a => a.id !== newAccount.id && a.dossierId !== newAccount.dossierId);
+        return [newAccount, ...filtered];
+      });
+    }
+
+    setTeachersList(prev => prev.map(t => t.id === teacherItem.id ? updatedTeacher : t));
+    if (onUpdateTeacher) onUpdateTeacher(updatedTeacher);
+    if (onUpdateTeachers) onUpdateTeachers(prev => prev.map(t => t.id === teacherItem.id ? updatedTeacher : t));
+
+    if (onAddAuditLog) {
+      onAddAuditLog("Génération Compte Portail Enseignant", `${teacherItem.firstName} ${teacherItem.lastName} (${generatedUsername})`);
+    }
+
+    setSelectedTeacherForSheet(newAccount);
   };
 
+  // Toggle account status (active/suspended)
+  const handleToggleAccountStatus = (teacherItem: Teacher) => {
+    const isCurrentlyActive = teacherItem.hasUserAccount && teacherItem.accountStatus !== "suspended";
+    const nextStatus = isCurrentlyActive ? "suspended" : "active";
+
+    const updatedTeacher: Teacher = {
+      ...teacherItem,
+      accountStatus: nextStatus,
+      portalAccess: !isCurrentlyActive
+    };
+
+    // Update universal user accounts
+    const storedAccounts = getStoredUniversalUserAccounts();
+    const matchAcc = storedAccounts.find(a => a.dossierId === teacherItem.id || a.username === teacherItem.username);
+    if (matchAcc) {
+      const updatedAcc = { ...matchAcc, isActive: !isCurrentlyActive, isSuspended: isCurrentlyActive };
+      persistUniversalUserAccount(updatedAcc);
+      if (onUpdateUserAccounts) {
+        onUpdateUserAccounts(prev => prev.map(a => a.id === updatedAcc.id ? updatedAcc : a));
+      }
+    }
+
+    setTeachersList(prev => prev.map(t => t.id === teacherItem.id ? updatedTeacher : t));
+    if (onUpdateTeacher) onUpdateTeacher(updatedTeacher);
+    if (onUpdateTeachers) onUpdateTeachers(prev => prev.map(t => t.id === teacherItem.id ? updatedTeacher : t));
+
+    if (onAddAuditLog) {
+      onAddAuditLog(isCurrentlyActive ? "Suspension Accès Enseignant" : "Réactivation Accès Enseignant", `${teacherItem.firstName} ${teacherItem.lastName}`);
+    }
+  };
+
+  // Form Submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lastName.trim() || !firstName.trim()) return;
+
+    const newTeacherData: Omit<Teacher, "id"> = {
+      firstName,
+      lastName,
+      postName,
+      email,
+      phone,
+      matriculeEtat: matriculeEtat.trim() || `ENS-${lastName.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      specialty: specialty || "Matières Générales",
+      salaryBase: Number(salaryBase) || 450,
+      weeklyHours: Number(weeklyHours) || 18,
+      assignedClasses: assignedClassList,
+      schoolId: schoolId,
+      hasUserAccount: autoCreateAccount,
+      accountCreated: autoCreateAccount,
+      accountStatus: autoCreateAccount ? "active" : "unprovisioned",
+      userAccountRole: "Enseignant",
+      portalAccess: autoCreateAccount
+    };
+
+    onAddTeacher(newTeacherData, autoCreateAccount);
+
+    setIsAdding(false);
+    setFirstName("");
+    setLastName("");
+    setPostName("");
+    setEmail("");
+    setPhone("");
+    setMatriculeEtat("");
+    setSpecialty("");
+    setSalaryBase(450);
+    setWeeklyHours(18);
+    setAssignedClassList([]);
+  };
+
+  // Bulk generate missing accounts
+  const handleBulkGenerateAccounts = () => {
+    const withoutAccount = teachersList.filter(t => !t.hasUserAccount || !t.username);
+    if (withoutAccount.length === 0) {
+      alert("Tous les enseignants possèdent déjà un compte portail actif !");
+      return;
+    }
+
+    if (confirm(`Générer automatiquement les accès au portail pour les ${withoutAccount.length} enseignant(s) sans compte ?`)) {
+      withoutAccount.forEach(t => {
+        generateTeacherAccount(t);
+      });
+      alert(`Accès générés avec succès pour ${withoutAccount.length} enseignant(s) !`);
+    }
+  };
+
+  // Filtered teachers
+  const filteredTeachers = React.useMemo(() => {
+    return teachersList.filter(t => {
+      if (filterAccountStatus === "active" && (!t.hasUserAccount || t.accountStatus === "suspended")) return false;
+      if (filterAccountStatus === "unprovisioned" && t.hasUserAccount) return false;
+
+      if (!searchTerm.trim()) return true;
+      const q = searchTerm.toLowerCase();
+      const nameMatch = `${t.lastName || ""} ${t.firstName || ""} ${t.postName || ""}`.toLowerCase().includes(q);
+      const specMatch = t.specialty?.toLowerCase().includes(q);
+      const phoneMatch = t.phone?.toLowerCase().includes(q);
+      const matMatch = t.matriculeEtat?.toLowerCase().includes(q) || t.username?.toLowerCase().includes(q);
+      const classMatch = t.assignedClasses?.some(c => c.toLowerCase().includes(q));
+      return nameMatch || specMatch || phoneMatch || matMatch || classMatch;
+    });
+  }, [teachersList, searchTerm, filterAccountStatus]);
+
+  const activeAccountsCount = teachersList.filter(t => t.hasUserAccount && t.accountStatus !== "suspended").length;
+  const unprovisionedCount = teachersList.filter(t => !t.hasUserAccount).length;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6" id="teachers-view-container">
+      
+      {/* HEADER WITH STATS & QUICK ACTIONS */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-3xl shadow-xs">
         <div>
-          <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Corps Professoral & Enseignants</h2>
+          <div className="flex items-center gap-2">
+            <GraduationCap className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+              Corps Professoral & Portails Enseignants
+            </h2>
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Gestion des profils d'enseignants, spécialisations académiques et charge horaire.
+            Création des fiches pédagogiques, génération des comptes utilisateurs et délivrance des accès au portail enseignant.
           </p>
         </div>
-        <button
-          onClick={() => setIsAdding(true)}
-          className="text-xs bg-gradient-to-r from-brand-blue to-brand-green text-white font-bold px-4 py-2.5 rounded-xl shadow-sm hover:opacity-90 transition-all cursor-pointer flex items-center space-x-1"
-        >
-          <Plus className="h-4.5 w-4.5" />
-          <span>Enregistrer Enseignant</span>
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {unprovisionedCount > 0 && (
+            <button
+              onClick={handleBulkGenerateAccounts}
+              className="text-xs bg-amber-500 hover:bg-amber-600 text-white font-bold px-3.5 py-2.5 rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
+              title="Générer les accès portail pour les enseignants sans compte"
+            >
+              <KeyRound className="h-4 w-4" />
+              <span>Générer tous les accès ({unprovisionedCount})</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsAdding(true)}
+            className="text-xs bg-gradient-to-r from-indigo-600 to-teal-600 hover:opacity-95 text-white font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer flex items-center space-x-1.5"
+            id="btn-add-teacher"
+          >
+            <Plus className="h-4.5 w-4.5" />
+            <span>Enregistrer Enseignant</span>
+          </button>
+        </div>
       </div>
 
+      {/* SEARCH AND FILTERS BAR */}
+      <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Rechercher (Nom, Spécialité, Matricule, Classe)..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:border-indigo-500 outline-none"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto text-xs font-bold">
+          <button
+            onClick={() => setFilterAccountStatus("all")}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 ${
+              filterAccountStatus === "all"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
+            }`}
+          >
+            Tous ({teachersList.length})
+          </button>
+          <button
+            onClick={() => setFilterAccountStatus("active")}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 flex items-center gap-1 ${
+              filterAccountStatus === "active"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
+            }`}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span>Portail Actif ({activeAccountsCount})</span>
+          </button>
+          <button
+            onClick={() => setFilterAccountStatus("unprovisioned")}
+            className={`px-3 py-1.5 rounded-xl transition-all shrink-0 flex items-center gap-1 ${
+              filterAccountStatus === "unprovisioned"
+                ? "bg-amber-600 text-white shadow-xs"
+                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
+            }`}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            <span>Sans Compte ({unprovisionedCount})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* CREATE TEACHER FORM / MODAL */}
       {isAdding && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl space-y-4 text-xs text-left">
-          <h3 className="font-bold text-slate-900 dark:text-white">Nouvel Enseignant</h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="font-semibold text-slate-500">Nom de famille</label>
-              <input required value={lastName} onChange={e => setLastName(e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white" />
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white dark:bg-slate-900 border-2 border-indigo-500/40 p-6 rounded-3xl space-y-5 text-xs text-left shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center space-x-2">
+              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl text-indigo-600">
+                <UserCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm text-slate-900 dark:text-white">Créer une Fiche & un Accès Enseignant</h3>
+                <p className="text-[11px] text-slate-500">Enregistrement administratif et génération automatique des identifiants sécurisés</p>
+              </div>
             </div>
+            <button 
+              onClick={() => setIsAdding(false)} 
+              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="font-semibold text-slate-500">Prénom</label>
-              <input required value={firstName} onChange={e => setFirstName(e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white" />
+              <label className="font-bold text-slate-700 dark:text-slate-300">Nom de famille *</label>
+              <input 
+                required 
+                placeholder="Ex: KALONJI" 
+                value={lastName} 
+                onChange={e => setLastName(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
             </div>
+
             <div className="space-y-1">
-              <label className="font-semibold text-slate-500">Adresse e-mail</label>
-              <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white" />
+              <label className="font-bold text-slate-700 dark:text-slate-300">Post-nom</label>
+              <input 
+                placeholder="Ex: MUKENDI" 
+                value={postName} 
+                onChange={e => setPostName(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
             </div>
+
             <div className="space-y-1">
-              <label className="font-semibold text-slate-500">Téléphone Mobile</label>
-              <input required placeholder="+243..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white" />
+              <label className="font-bold text-slate-700 dark:text-slate-300">Prénom *</label>
+              <input 
+                required 
+                placeholder="Ex: Jean-Luc" 
+                value={firstName} 
+                onChange={e => setFirstName(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
             </div>
+
             <div className="space-y-1">
-              <label className="font-semibold text-slate-500">Matière Principale / Spécialité</label>
-              <input required placeholder="Ex: Mathématiques, Physique, Français" value={specialty} onChange={e => setSpecialty(e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white" />
+              <label className="font-bold text-slate-700 dark:text-slate-300">Téléphone Mobile *</label>
+              <input 
+                required 
+                placeholder="+243..." 
+                value={phone} 
+                onChange={e => setPhone(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
             </div>
+
             <div className="space-y-1">
-              <label className="font-semibold text-slate-500">Salaire de Base Mensuel (USD)</label>
-              <input type="number" required value={salaryBase} onChange={e => setSalaryBase(Number(e.target.value))} className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white" />
+              <label className="font-bold text-slate-700 dark:text-slate-300">Adresse e-mail</label>
+              <input 
+                type="email" 
+                placeholder="professeur@ecole.cd" 
+                value={email} 
+                onChange={e => setEmail(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
             </div>
-            <div className="md:col-span-2 flex justify-end space-x-2 pt-2">
-              <button type="button" onClick={() => setIsAdding(false)} className="bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 px-4 py-2 rounded-lg font-bold">Annuler</button>
-              <button type="submit" className="bg-brand-blue hover:bg-brand-blue-hover text-white px-4 py-2 rounded-lg font-bold">Enregistrer</button>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 dark:text-slate-300">Matricule d'État / Interne</label>
+              <input 
+                placeholder="Ex: ENS-2026-8890" 
+                value={matriculeEtat} 
+                onChange={e => setMatriculeEtat(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 dark:text-slate-300">Matière Principale / Spécialité *</label>
+              <input 
+                required 
+                placeholder="Ex: Mathématiques, Physique, Français, SVT" 
+                value={specialty} 
+                onChange={e => setSpecialty(e.target.value)} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 dark:text-slate-300">Volume Horaire (h/semaine)</label>
+              <input 
+                type="number" 
+                min={1} 
+                max={40} 
+                value={weeklyHours} 
+                onChange={e => setWeeklyHours(Number(e.target.value))} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 dark:text-slate-300">Salaire de Base Mensuel (USD)</label>
+              <input 
+                type="number" 
+                required 
+                value={salaryBase} 
+                onChange={e => setSalaryBase(Number(e.target.value))} 
+                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-medium outline-none focus:border-indigo-500" 
+              />
+            </div>
+
+            {/* ASSIGNED CLASSES MULTI-SELECT */}
+            <div className="md:col-span-3 space-y-1.5 pt-2">
+              <label className="font-bold text-slate-700 dark:text-slate-300">
+                Classes prises en charge par cet enseignant
+              </label>
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                {availableClassNames.map(clsName => {
+                  const isSelected = assignedClassList.includes(clsName);
+                  return (
+                    <button
+                      type="button"
+                      key={clsName}
+                      onClick={() => {
+                        if (isSelected) {
+                          setAssignedClassList(prev => prev.filter(c => c !== clsName));
+                        } else {
+                          setAssignedClassList(prev => [...prev, clsName]);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                        isSelected 
+                          ? "bg-indigo-600 text-white shadow-xs" 
+                          : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-indigo-400"
+                      }`}
+                    >
+                      <span>{clsName}</span>
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* AUTO CREATE PORTAL ACCOUNT TOGGLE */}
+            <div className="md:col-span-3 p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <KeyRound className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <div>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs">
+                    Créer immédiatement le compte portail et générer les accès
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Génère un identifiant unique, un mot de passe temporaire et permet l'impression immédiate de la fiche de connexion.
+                  </p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={autoCreateAccount}
+                onChange={e => setAutoCreateAccount(e.target.checked)}
+                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
+
+            <div className="md:col-span-3 flex justify-end space-x-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button 
+                type="button" 
+                onClick={() => setIsAdding(false)} 
+                className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 px-4 py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button 
+                type="submit" 
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-bold shadow-md cursor-pointer flex items-center space-x-1.5"
+                id="btn-save-teacher"
+              >
+                <Check className="h-4 w-4" />
+                <span>{autoCreateAccount ? "Enregistrer la fiche & Créer le compte" : "Enregistrer la fiche"}</span>
+              </button>
             </div>
           </form>
-        </div>
+        </motion.div>
       )}
 
       {/* TEACHERS LIST GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {teachers.map((t) => (
-          <div key={t.id} className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-5 rounded-2xl shadow-sm space-y-3 relative overflow-hidden text-xs">
-            <div className="absolute top-0 right-0 h-1.5 w-full bg-brand-green" />
-            
-            <div className="flex justify-between items-start">
-              <div>
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Prof. {t.lastName} {t.firstName}</h4>
-                <p className="text-[10px] text-brand-blue font-semibold mt-0.5">{t.specialty}</p>
-              </div>
-              <button onClick={() => onDeleteTeacher(t.id)} className="text-slate-400 hover:text-red-500 p-1 cursor-pointer">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
+      {filteredTeachers.length === 0 ? (
+        <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
+          <GraduationCap className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto" />
+          <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">Aucun enseignant trouvé</h4>
+          <p className="text-slate-400 text-xs">Ajustez vos filtres ou enregistrez un nouvel enseignant.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="teachers-grid">
+          {filteredTeachers.map((t) => {
+            const hasAccount = Boolean(t.hasUserAccount && (t.username || t.matriculeEtat));
+            const isSuspended = t.accountStatus === "suspended";
 
-            <div className="space-y-1 text-slate-500 dark:text-slate-400">
-              <p>📞 {t.phone}</p>
-              <p>✉️ {t.email}</p>
-              <p className="font-medium text-slate-700 dark:text-slate-300">Classes: {t.assignedClasses.join(", ")}</p>
-            </div>
+            return (
+              <div 
+                key={t.id} 
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-3xl shadow-xs space-y-4 relative overflow-hidden text-xs flex flex-col justify-between"
+                id={`teacher-card-${t.id}`}
+              >
+                {/* Top Accent Strip */}
+                <div className={`absolute top-0 right-0 h-1.5 w-full ${hasAccount && !isSuspended ? "bg-emerald-500" : isSuspended ? "bg-red-500" : "bg-amber-400"}`} />
+                
+                {/* Header & Avatar */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center space-x-3">
+                      <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-teal-500 text-white font-black flex items-center justify-center text-sm shadow-sm shrink-0">
+                        {t.firstName?.charAt(0) || "P"}{t.lastName?.charAt(0) || "E"}
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm text-slate-900 dark:text-white leading-tight">
+                          Prof. {t.lastName} {t.firstName} {t.postName || ""}
+                        </h4>
+                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold block mt-0.5">
+                          {t.specialty || "Enseignant titulaire"}
+                        </span>
+                        {t.matriculeEtat && (
+                          <span className="text-[9px] font-mono text-slate-400">
+                            Matricule: {t.matriculeEtat}
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-bold">Volume horaire</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">{t.weeklyHours} heures/semaine</span>
+                    <button 
+                      onClick={() => {
+                        if (confirm(`Confirmez-vous la suppression de l'enseignant ${t.firstName} ${t.lastName} ?`)) {
+                          onDeleteTeacher(t.id);
+                        }
+                      }} 
+                      className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                      title="Supprimer la fiche enseignant"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Account Status Badge */}
+                  <div className="flex items-center justify-between pt-1">
+                    {hasAccount && !isSuspended ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                        <span>Portail Actif ({t.username || t.matriculeEtat})</span>
+                      </span>
+                    ) : isSuspended ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200">
+                        <Power className="h-3 w-3 text-red-500" />
+                        <span>Accès Suspendu</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200">
+                        <KeyRound className="h-3 w-3 text-amber-500" />
+                        <span>Accès Non Généré</span>
+                      </span>
+                    )}
+
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                      {t.salaryBase} USD/mois
+                    </span>
+                  </div>
+
+                  {/* Details info */}
+                  <div className="space-y-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                    <p className="flex items-center gap-1.5 text-[11px]">
+                      <span>📞</span> <span className="font-semibold text-slate-700 dark:text-slate-300">{t.phone || "Non renseigné"}</span>
+                    </p>
+                    {t.email && (
+                      <p className="flex items-center gap-1.5 text-[11px] truncate">
+                        <span>✉️</span> <span>{t.email}</span>
+                      </p>
+                    )}
+                    <div className="pt-1 flex flex-wrap gap-1">
+                      <span className="text-[9px] font-bold uppercase text-slate-400 block w-full">Classes assignées :</span>
+                      {t.assignedClasses && t.assignedClasses.length > 0 ? (
+                        t.assignedClasses.map((c, idx) => (
+                          <span key={idx} className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300">
+                            {c}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">Aucune classe assignée</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ACTION BUTTONS (CREATION DU COMPTE / FICHE DE CONNEXION / PORTAIL) */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                  {!hasAccount ? (
+                    <button
+                      onClick={() => generateTeacherAccount(t)}
+                      className="w-full bg-gradient-to-r from-indigo-600 to-teal-600 hover:opacity-95 text-white font-bold py-2 px-3 rounded-xl shadow-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer text-xs"
+                      id={`btn-create-account-${t.id}`}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                      <span>Créer le compte portail</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={() => {
+                            const mockAccount: UserAccount = {
+                              id: t.userAccountId || `acc-ens-${t.id}`,
+                              dossierId: t.id,
+                              dossierType: "personnel",
+                              fullName: `Prof. ${t.lastName} ${t.firstName}`,
+                              username: t.username || t.matriculeEtat || `ENS-${t.lastName.toUpperCase()}-101`,
+                              role: "Enseignant",
+                              functionTitle: `Enseignant / Spécialiste ${t.specialty}`,
+                              activationCode: t.activationCode || "ENS-2026",
+                              tempPassword: t.tempPassword || "Prof2026!",
+                              phone: t.phone,
+                              email: t.email,
+                              isActive: !isSuspended,
+                              schoolName: schoolName,
+                              schoolId: schoolId,
+                              createdAt: t.activationDate || new Date().toLocaleDateString("fr-FR"),
+                              portalUrl: "/portail/enseignant",
+                              portalCode: "PORTAL_TEACHER",
+                              portalName: "Portail Pédagogique Enseignant"
+                            };
+                            setSelectedTeacherForSheet(mockAccount);
+                          }}
+                          className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 font-bold py-1.5 px-2 rounded-xl transition-colors flex items-center justify-center space-x-1 cursor-pointer text-[11px]"
+                          title="Voir la fiche officielle d'accès avec QR code et identifiants"
+                        >
+                          <Printer className="h-3.5 w-3.5 text-indigo-500" />
+                          <span>Fiche Connexion</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (onOpenPortal) {
+                              const targetAcc: UserAccount = {
+                                id: t.userAccountId || `acc-ens-${t.id}`,
+                                dossierId: t.id,
+                                dossierType: "personnel",
+                                fullName: `Prof. ${t.lastName} ${t.firstName}`,
+                                username: t.username || t.matriculeEtat || `ENS-${t.lastName.toUpperCase()}-101`,
+                                role: "Enseignant",
+                                functionTitle: `Enseignant / Spécialiste ${t.specialty}`,
+                                activationCode: t.activationCode || "ENS-2026",
+                                tempPassword: t.tempPassword || "Prof2026!",
+                                phone: t.phone,
+                                email: t.email,
+                                isActive: true,
+                                schoolName: schoolName,
+                                schoolId: schoolId,
+                                createdAt: t.activationDate || new Date().toLocaleDateString("fr-FR"),
+                                portalUrl: "/portail/enseignant",
+                                portalCode: "PORTAL_TEACHER",
+                                portalName: "Portail Pédagogique Enseignant",
+                                targetPortalTab: "enseignants"
+                              };
+                              onOpenPortal(targetAcc);
+                            }
+                          }}
+                          className="bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold py-1.5 px-2 rounded-xl transition-colors flex items-center justify-center space-x-1 cursor-pointer text-[11px]"
+                          title="Se connecter directement au portail de cet enseignant"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 text-indigo-600" />
+                          <span>Ouvrir Portail</span>
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between items-center px-1">
+                        <button
+                          onClick={() => handleToggleAccountStatus(t)}
+                          className={`text-[10px] font-bold flex items-center gap-1 cursor-pointer ${
+                            isSuspended ? "text-emerald-600 hover:underline" : "text-amber-600 hover:underline"
+                          }`}
+                        >
+                          <Power className="h-3 w-3" />
+                          <span>{isSuspended ? "Réactiver l'accès" : "Suspendre l'accès"}</span>
+                        </button>
+
+                        <button
+                          onClick={() => generateTeacherAccount(t)}
+                          className="text-[10px] text-slate-400 hover:text-indigo-500 font-bold flex items-center gap-1 cursor-pointer"
+                          title="Générer de nouveaux identifiants"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          <span>Réinitialiser</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block uppercase font-bold">Rémunération</span>
-                <span className="font-bold text-brand-green">{t.salaryBase} USD</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] text-slate-400 text-left">MODULE TERMINÉ ✅</p>
+            );
+          })}
+        </div>
+      )}
+
+      {/* OFFICIAL LOGIN CREDENTIALS SHEET MODAL */}
+      {selectedTeacherForSheet && (
+        <OfficialLoginSheetModal
+          account={selectedTeacherForSheet}
+          schoolName={schoolName}
+          schoolLogoUrl={schoolLogoUrl}
+          schoolMotto={schoolMotto}
+          creatorName="Direction Pédagogique & RH"
+          creatorRole="Chef d'Établissement"
+          onClose={() => setSelectedTeacherForSheet(null)}
+          onOpenPortal={onOpenPortal}
+        />
+      )}
     </div>
   );
 }
@@ -2842,6 +3506,8 @@ interface ClassesViewProps {
   schoolName?: string;
   onUpdateClass?: (updatedClass: ClassRoom) => void;
   onUpdateClasses?: React.Dispatch<React.SetStateAction<ClassRoom[]>>;
+  onUpdateTeachers?: React.Dispatch<React.SetStateAction<Teacher[]>>;
+  onDeleteClass?: (classId: string) => void;
 }
 
 export function ClassesView({ 
@@ -2859,7 +3525,9 @@ export function ClassesView({
   schoolId,
   schoolName = "Établissement Scolaire",
   onUpdateClass,
-  onUpdateClasses
+  onUpdateClasses,
+  onUpdateTeachers,
+  onDeleteClass
 }: ClassesViewProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedClassRoom, setSelectedClassRoom] = useState<ClassRoom | null>(null);
@@ -3897,14 +4565,28 @@ export function ClassesView({
               <div className="pt-6 border-t border-slate-100 dark:border-slate-850 mt-6 flex gap-2">
                 <button 
                   onClick={() => setRelationshipModalTarget({ type: "class", entity: selectedClassRoom })}
-                  className="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-bold transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <UserCog className="h-4 w-4" />
                   <span>Gérer les affectations</span>
                 </button>
                 <button 
+                  onClick={() => {
+                    if (confirm(`Confirmez-vous la suppression définitive de la classe ${fullClassName} ?`)) {
+                      if (onDeleteClass) onDeleteClass(selectedClassRoom.id);
+                      if (onUpdateClasses) onUpdateClasses(prev => prev.filter(c => c.id !== selectedClassRoom.id));
+                      setSelectedClassRoom(null);
+                    }
+                  }}
+                  className="px-3.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 py-2.5 rounded-xl font-bold transition-all text-xs cursor-pointer border border-red-200 dark:border-red-800 flex items-center justify-center gap-1"
+                  title="Supprimer la classe"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Supprimer</span>
+                </button>
+                <button 
                   onClick={() => setSelectedClassRoom(null)}
-                  className="w-1/2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 py-2.5 rounded-xl font-bold transition-all text-xs cursor-pointer"
+                  className="px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 py-2.5 rounded-xl font-bold transition-all text-xs cursor-pointer"
                 >
                   Fermer
                 </button>
@@ -3930,6 +4612,7 @@ export function ClassesView({
           classes={classes}
           schoolId={schoolId}
           schoolName={schoolName}
+          onUpdateTeachers={onUpdateTeachers}
           onClose={() => setRelationshipModalTarget(null)}
           onUpdateClass={(updatedClass) => {
             if (onUpdateClass) onUpdateClass(updatedClass);
@@ -5670,7 +6353,7 @@ export function SettingsView({
   const core = useSmartSchoolCore();
   const currentSchoolId = activeSchool?.id || "default";
 
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"identity" | "payments" | "privacy">("identity");
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"identity" | "payments" | "privacy" | "updates">("identity");
 
   // Local identity state
   const [name, setName] = useState(schoolName);
@@ -5926,6 +6609,18 @@ export function SettingsView({
           >
             <ShieldCheck className="h-4 w-4" />
             <span>Confidentialité & Sécurité</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSettingsTab("updates")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSettingsTab === "updates"
+                ? "bg-white dark:bg-slate-900 text-brand-blue dark:text-blue-400 shadow-xs"
+                : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>Mise à jour de SmartSchool RDC</span>
           </button>
         </div>
       </div>
@@ -6423,6 +7118,16 @@ export function SettingsView({
             <p className="font-mono text-[9px] text-slate-400">Fred-Technique SARL © 2026. Tous droits réservés.</p>
           </div>
         </div>
+      )}
+
+      {/* TAB 4: MISE À JOUR DE SMARTSCHOOL RDC */}
+      {activeSettingsTab === "updates" && (
+        <SchoolUpdateCenter
+          schoolName={activeSchool?.name || schoolName}
+          userRole={userRole}
+          userName={userName}
+          activeSchoolId={currentSchoolId}
+        />
       )}
 
       {/* MODAL: ADD / EDIT PAYMENT ACCOUNT */}
